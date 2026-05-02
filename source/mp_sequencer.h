@@ -21,14 +21,13 @@ extern "C" {
 #define MP_SEQ_MAX_TRACKS 4
 #endif
 
-/* Note event structure (8 bytes, packed for Flash storage) */
+/* Note event structure (compact for Flash storage) */
 typedef struct {
     uint32_t start_time_ms; /* Absolute start time in milliseconds */
     uint16_t phase_inc;     /* Phase increment (from note table) */
     uint16_t duration_ms;   /* Note duration in milliseconds */
     uint8_t volume;         /* Volume (0~127) */
     uint8_t channel;        /* Oscillator channel to use (0~3) */
-    uint8_t _pad[2];        /* Padding for alignment */
 } mp_note_event_t;
 
 /* Track descriptor */

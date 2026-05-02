@@ -4,7 +4,7 @@
  *
  * MidiPlayer STM32F103 port implementation
  *
- * TIM4_CH1 (PB6): 10-bit PWM output at ~70.3kHz
+ * TIM2_CH1 (PA0): 10-bit PWM output at ~70.3kHz
  * TIM3: 16kHz sample rate interrupt driving the oscillator
  */
 #include "port_stm32f103.h"
@@ -12,10 +12,10 @@
 #include "mp_port.h"
 #include "Arduino.h"
 
-/* PWM configuration: 72MHz / 1024 ≈ 70.3kHz, 10-bit resolution */
-#define AUDIO_PWM_TIM TIM4
+/* PWM: TIM2_CH1 on PA0, ARR=1023 (10-bit), PSC=0 -> 72MHz/1024 ≈ 70.3kHz */
+#define AUDIO_PWM_TIM TIM2
 #define AUDIO_PWM_ARR 1023
-#define AUDIO_PWM_PIN PB6
+#define AUDIO_PWM_PIN PA0
 
 /* Sample rate timer */
 #define AUDIO_SR_TIM TIM3
@@ -35,7 +35,6 @@ uint32_t mp_port_get_tick_ms(void) {
 
 /* 16kHz sample rate ISR */
 static void audio_sample_isr(void) {
-    /* Generate mixed audio sample and output to PWM */
     uint16_t sample = mp_audio_tick();
     mp_port_audio_write(sample);
 
@@ -47,18 +46,21 @@ static void audio_sample_isr(void) {
 }
 
 void audio_hw_init(void) {
-    /* Initialize TIM4_CH1 as PWM output on PB6 */
-    /* ARR = 1023 (10-bit), PSC = 0, freq = 72MHz/1024 ≈ 70.3kHz */
-    PWM_Init(AUDIO_PWM_PIN, AUDIO_PWM_ARR + 1, 72000000 / (AUDIO_PWM_ARR + 1));
+    /* Configure PA0 as TIM2_CH1 alternate function push-pull */
+    pinMode(AUDIO_PWM_PIN, OUTPUT_AF);
+
+    /* Configure TIM2 for PWM: ARR=1023, PSC=0 -> 72MHz/1024 ≈ 70.3kHz */
+    TIMx_OCxInit(AUDIO_PWM_TIM, AUDIO_PWM_ARR, 0, PIN_MAP[AUDIO_PWM_PIN].TimerChannel);
 
     /* Set initial duty to DC offset (silence) */
     mp_port_audio_write(MP_OSC_DC_OFFSET);
 
-    /* Initialize TIM3 as 16kHz sample rate interrupt */
-    /* 72MHz / 16000 = 4500 ticks per interrupt */
+    /* Configure TIM3 as 16kHz sample rate interrupt */
+    /* period=4500, prescaler=1 -> 72MHz / (4500 * 1) = 16kHz */
     Timer_SetInterruptBase(AUDIO_SR_TIM, 4500,  /* period */
-                           1,                   /* prescaler (div by 1) */
-                           audio_sample_isr, 0, /* highest preemption priority */
-                           0                    /* highest sub priority */
+                           1,                   /* prescaler */
+                           audio_sample_isr, 0, /* preemption priority (highest) */
+                           0                    /* sub priority */
     );
+    Timer_SetEnable(AUDIO_SR_TIM, true);
 }

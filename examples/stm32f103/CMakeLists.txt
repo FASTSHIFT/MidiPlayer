@@ -41,7 +41,7 @@ file(GLOB ARDUINO_SOURCES ${ARDUINO_DIR}/*.c ${ARDUINO_DIR}/*.cpp)
 set(STARTUP_SOURCE ${PLATFORM_DIR}/Startup/startup_stm32f10x.s)
 
 # Application sources
-set(APP_SOURCES ${CMAKE_CURRENT_LIST_DIR}/main.c
+set(APP_SOURCES ${CMAKE_CURRENT_LIST_DIR}/main.cpp
                 ${CMAKE_CURRENT_LIST_DIR}/port_stm32f103.c)
 
 # All sources
