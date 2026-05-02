@@ -22,6 +22,7 @@ endif()
 # Source under test
 set(SUT_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_osc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_envelope.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_note_table.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_sequencer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_player.c)
@@ -32,8 +33,8 @@ set(MOCK_SOURCES mock_port.c)
 set(TEST_FRAMEWORK_SOURCES test_framework.c)
 
 # Test sources
-set(TEST_SOURCES test_main.c test_osc.c test_note_table.c test_sequencer.c
-                 test_player.c)
+set(TEST_SOURCES test_main.c test_osc.c test_note_table.c test_envelope.c
+                 test_sequencer.c test_player.c)
 
 # Test executable
 add_executable(

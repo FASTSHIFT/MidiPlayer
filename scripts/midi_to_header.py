@@ -5,16 +5,85 @@ Convert a MIDI file to a C header for MidiPlayer library.
 Outputs mp_note_event_t / mp_track_t / mp_score_t structures
 compatible with source/mp_sequencer.h.
 
+Supports ADSR envelope presets and duty cycle modulation based on
+MIDI program (instrument) numbers.
+
 Usage:
     python3 midi_to_header.py input.mid output.h [--max-tracks N] [--name SCORE_NAME]
 """
 
 import mido
 import argparse
-import math
 import sys
 
 SAMPLE_RATE = 16000
+
+# ADSR preset indices (must match mp_adsr_preset_t in mp_envelope.h)
+ADSR_DEFAULT = 0
+ADSR_PIANO = 1
+ADSR_ORGAN = 2
+ADSR_STRINGS = 3
+ADSR_BASS = 4
+ADSR_LEAD = 5
+ADSR_PAD = 6
+
+# Duty cycle values
+MOD_50 = 127   # 50% - classic square wave
+MOD_25 = 64    # 25% - brighter, thinner
+MOD_12 = 32    # 12.5% - very thin, nasal
+
+# MIDI program number -> (duty_cycle, adsr_preset)
+# General MIDI instrument families (0-indexed):
+#   0-7:   Piano
+#   8-15:  Chromatic Percussion
+#   16-23: Organ
+#   24-31: Guitar
+#   32-39: Bass
+#   40-47: Strings
+#   48-55: Ensemble
+#   56-63: Brass
+#   64-71: Reed
+#   72-79: Pipe
+#   80-87: Synth Lead
+#   88-95: Synth Pad
+#   96-103: Synth Effects
+#   104-111: Ethnic
+#   112-119: Percussive
+#   120-127: Sound Effects
+def get_instrument_params(program):
+    """Map MIDI program number to (mod, adsr_preset)."""
+    if program < 8:       # Piano
+        return (MOD_50, ADSR_PIANO)
+    elif program < 16:    # Chromatic Percussion
+        return (MOD_25, ADSR_PIANO)
+    elif program < 24:    # Organ
+        return (MOD_50, ADSR_ORGAN)
+    elif program < 32:    # Guitar
+        return (MOD_25, ADSR_PIANO)
+    elif program < 40:    # Bass
+        return (MOD_50, ADSR_BASS)
+    elif program < 48:    # Strings
+        return (MOD_50, ADSR_STRINGS)
+    elif program < 56:    # Ensemble
+        return (MOD_50, ADSR_STRINGS)
+    elif program < 64:    # Brass
+        return (MOD_25, ADSR_LEAD)
+    elif program < 72:    # Reed
+        return (MOD_25, ADSR_LEAD)
+    elif program < 80:    # Pipe
+        return (MOD_12, ADSR_ORGAN)
+    elif program < 88:    # Synth Lead
+        return (MOD_25, ADSR_LEAD)
+    elif program < 96:    # Synth Pad
+        return (MOD_50, ADSR_PAD)
+    elif program < 104:   # Synth Effects
+        return (MOD_12, ADSR_DEFAULT)
+    elif program < 112:   # Ethnic
+        return (MOD_25, ADSR_DEFAULT)
+    elif program < 120:   # Percussive
+        return (MOD_50, ADSR_PIANO)
+    else:                 # Sound Effects
+        return (MOD_50, ADSR_DEFAULT)
 
 
 def midi_note_to_phase_inc(note):
@@ -33,6 +102,7 @@ def parse_midi(filename, max_tracks):
         events = []
         current_time = 0.0
         tempo = 500000  # default 120 BPM
+        current_program = 0  # default instrument
         note_on_times = {}
         note_on_velocities = {}
 
@@ -44,34 +114,36 @@ def parse_midi(filename, max_tracks):
                 tempo = msg.tempo
                 continue
 
+            if msg.type == 'program_change':
+                current_program = msg.program
+                continue
+
             if msg.type == 'note_on' and msg.velocity > 0:
-                note_on_times[msg.note] = current_time
+                note_on_times[msg.note] = (current_time, current_program)
                 note_on_velocities[msg.note] = msg.velocity
                 continue
 
             if msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
                 if msg.note in note_on_times:
-                    start_time = note_on_times[msg.note]
+                    start_time, program = note_on_times[msg.note]
                     duration_ms = int((current_time - start_time) * 1000)
                     start_ms = int(start_time * 1000)
                     phase_inc = midi_note_to_phase_inc(msg.note)
-                    # Scale velocity from 0-127 to 0-127 (already in range)
                     volume = min(note_on_velocities[msg.note], 127)
+                    mod, adsr = get_instrument_params(program)
 
                     if phase_inc > 0 and duration_ms > 0:
-                        events.append((start_ms, phase_inc, duration_ms, volume))
+                        events.append((start_ms, phase_inc, duration_ms, volume, mod, adsr))
 
                     del note_on_times[msg.note]
                     del note_on_velocities[msg.note]
 
         if events:
-            # Sort by start time
             events.sort(key=lambda e: e[0])
             tracks.append(events)
 
-    # Limit tracks
+    # Limit tracks: keep the ones with most notes
     if len(tracks) > max_tracks:
-        # Keep the tracks with most notes
         tracks.sort(key=lambda t: len(t), reverse=True)
         tracks = tracks[:max_tracks]
 
@@ -79,38 +151,29 @@ def parse_midi(filename, max_tracks):
 
 
 def assign_channels(tracks):
-    """
-    Assign oscillator channels to note events.
-    Each track gets a base channel. When a track has simultaneous notes
-    (polyphony), extra notes spill into higher channels.
-    """
+    """Assign oscillator channels to note events."""
     max_ch = 3  # channels 0-2 for square waves, 3 is noise
 
     for track_idx, events in enumerate(tracks):
         base_ch = track_idx % (max_ch + 1)
-        # Track active notes: channel -> off_time
         active = {}
 
-        for i, (start_ms, phase_inc, duration_ms, volume) in enumerate(events):
-            # Find a free channel
+        for i, (start_ms, phase_inc, duration_ms, volume, mod, adsr) in enumerate(events):
             assigned_ch = base_ch
-            # Release expired notes
             expired = [ch for ch, off in active.items() if off <= start_ms]
             for ch in expired:
                 del active[ch]
 
-            # If base channel is busy, try others
             if base_ch in active:
                 for ch in range(max_ch + 1):
                     if ch not in active:
                         assigned_ch = ch
                         break
                 else:
-                    # All channels busy, steal base channel
                     assigned_ch = base_ch
 
             active[assigned_ch] = start_ms + duration_ms
-            events[i] = (start_ms, phase_inc, duration_ms, volume, assigned_ch)
+            events[i] = (start_ms, phase_inc, duration_ms, volume, assigned_ch, mod, adsr)
 
 
 def generate_header(tracks, output_file, score_name):
@@ -127,12 +190,14 @@ def generate_header(tracks, output_file, score_name):
 
         for i, events in enumerate(tracks):
             f.write(f"static const mp_note_event_t {score_name}_track{i}[] = {{\n")
-            for (start_ms, phase_inc, duration_ms, volume, channel) in events:
+            for (start_ms, phase_inc, duration_ms, volume, channel, mod, adsr) in events:
                 f.write(f"    {{ .start_time_ms = {start_ms}, "
                         f".phase_inc = {phase_inc}, "
                         f".duration_ms = {duration_ms}, "
                         f".volume = {volume}, "
-                        f".channel = {channel} }},\n")
+                        f".channel = {channel}, "
+                        f".mod = {mod}, "
+                        f".adsr_preset = {adsr} }},\n")
                 total_events += 1
             f.write("};\n\n")
 
@@ -150,7 +215,6 @@ def generate_header(tracks, output_file, score_name):
         f.write("};\n\n")
         f.write("#endif /* MIDI_DATA_H */\n")
 
-        # Size estimate: 12 bytes per event (struct with padding)
         size_kb = total_events * 12 / 1024
         print(f"Generated: {output_file}")
         print(f"  Tracks: {len(tracks)}")

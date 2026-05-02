@@ -9,6 +9,7 @@
 /* Test suite declarations */
 extern void test_osc_run(void);
 extern void test_note_table_run(void);
+extern void test_envelope_run(void);
 extern void test_sequencer_run(void);
 extern void test_player_run(void);
 
@@ -17,6 +18,7 @@ int main(void) {
 
     test_osc_run();
     test_note_table_run();
+    test_envelope_run();
     test_sequencer_run();
     test_player_run();
 

@@ -5,9 +5,11 @@
  * MidiPlayer - Public API Implementation
  */
 #include "mp_player.h"
+#include "mp_envelope.h"
 
 void mp_init(void) {
     mp_osc_init();
+    mp_env_init();
     mp_seq_init();
 }
 

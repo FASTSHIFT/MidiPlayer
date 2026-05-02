@@ -21,6 +21,7 @@ endif()
 # Source files
 set(MIDIPLAYER_SOURCES
     ${MIDIPLAYER_ROOT}/source/mp_osc.c
+    ${MIDIPLAYER_ROOT}/source/mp_envelope.c
     ${MIDIPLAYER_ROOT}/source/mp_note_table.c
     ${MIDIPLAYER_ROOT}/source/mp_sequencer.c
     ${MIDIPLAYER_ROOT}/source/mp_player.c)

@@ -5,7 +5,7 @@
  * MidiPlayer - MIDI Sequencer
  *
  * Event-driven sequencer that reads pre-converted MIDI data
- * and drives the oscillator channels.
+ * and drives the oscillator channels with ADSR envelope support.
  */
 #ifndef MP_SEQUENCER_H
 #define MP_SEQUENCER_H
@@ -26,8 +26,10 @@ typedef struct {
     uint32_t start_time_ms; /* Absolute start time in milliseconds */
     uint16_t phase_inc;     /* Phase increment (from note table) */
     uint16_t duration_ms;   /* Note duration in milliseconds */
-    uint8_t volume;         /* Volume (0~127) */
+    uint8_t volume;         /* Velocity (0~127) */
     uint8_t channel;        /* Oscillator channel to use (0~3) */
+    uint8_t mod;            /* Duty cycle (0~255, 127=50%, 64=25%) */
+    uint8_t adsr_preset;    /* ADSR preset index (mp_adsr_preset_t) */
 } mp_note_event_t;
 
 /* Track descriptor */
