@@ -9,27 +9,12 @@
 #include "mp_player.h"
 #include "mp_port.h"
 
-/* Use ORGAN preset for instant attack / full sustain */
+/* ORGAN preset, square wave */
 #define TEST_ADSR 2
 
-/* Test data */
 static const mp_note_event_t player_test_events[] = {
-    {.start_time_ms = 0,
-     .phase_inc = 1072,
-     .duration_ms = 50,
-     .volume = 100,
-     .channel = 0,
-     .mod = 127,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
-    {.start_time_ms = 100,
-     .phase_inc = 1802,
-     .duration_ms = 50,
-     .volume = 80,
-     .channel = 0,
-     .mod = 127,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
+    {MP_EVT_PACK_WORD0(0, 50), MP_EVT_PACK_WORD1(1072, 100, 0, 0, TEST_ADSR, 0)},
+    {MP_EVT_PACK_WORD0(100, 50), MP_EVT_PACK_WORD1(1802, 80, 0, 0, TEST_ADSR, 0)},
 };
 
 static const mp_track_t player_test_tracks[] = {
@@ -56,7 +41,6 @@ static void test_player_play_stop(void) {
 
 static void test_player_audio_tick_returns_valid(void) {
     mp_init();
-    /* Without any notes, should return DC offset */
     uint16_t sample = mp_audio_tick();
     TEST_ASSERT_EQUAL(MP_OSC_DC_OFFSET, sample);
 }
@@ -68,7 +52,6 @@ static void test_player_full_playback(void) {
     mp_play(&player_test_score);
     TEST_ASSERT_TRUE(mp_is_playing());
 
-    /* Simulate playback: update sequencer, generate audio samples */
     for (uint32_t ms = 0; ms < 300; ms++) {
         mp_update(ms);
         for (int s = 0; s < 16; s++) {
@@ -77,7 +60,6 @@ static void test_player_full_playback(void) {
         }
     }
 
-    /* Should have auto-stopped after all notes + release */
     TEST_ASSERT_FALSE(mp_is_playing());
     TEST_ASSERT_TRUE(mock_port_get_audio_count() > 0);
 }
@@ -88,12 +70,10 @@ static void test_player_audio_has_variation(void) {
 
     mp_play(&player_test_score);
 
-    /* Trigger first note and let attack complete */
     for (uint32_t ms = 0; ms < 5; ms++) {
         mp_update(ms);
     }
 
-    /* Generate samples and check for variation */
     int non_dc_count = 0;
     for (int i = 0; i < 100; i++) {
         uint16_t sample = mp_audio_tick();

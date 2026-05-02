@@ -4,7 +4,8 @@
  *
  * MidiPlayer - MIDI Sequencer Implementation
  *
- * Event-driven sequencer with ADSR envelope and duty cycle support.
+ * Event-driven sequencer with ADSR envelope, duty cycle, and waveform support.
+ * Uses packed 8-byte note events for compact Flash storage.
  */
 #include "mp_sequencer.h"
 #include "mp_envelope.h"
@@ -14,9 +15,9 @@
 typedef struct {
     const mp_note_event_t* events;
     uint32_t event_count;
-    uint32_t next_event_idx;  /* Index of next event to process */
-    uint32_t active_off_time; /* When the current note should release (0 = no active note) */
-    uint8_t channel;          /* Oscillator channel assigned to this track */
+    uint32_t next_event_idx;
+    uint32_t active_off_time; /* 0 = no active note */
+    uint8_t channel;
 } mp_track_state_t;
 
 /* Sequencer state */
@@ -24,7 +25,7 @@ static struct {
     mp_track_state_t tracks[MP_SEQ_MAX_TRACKS];
     uint8_t track_count;
     uint8_t playing;
-    uint32_t start_ms; /* Timestamp when playback started */
+    uint32_t start_ms;
 } seq_state;
 
 void mp_seq_init(void) {
@@ -74,7 +75,6 @@ void mp_seq_tick(uint32_t current_ms) {
         return;
     }
 
-    /* Set start time on first tick */
     if (seq_state.start_ms == 0) {
         seq_state.start_ms = current_ms;
     }
@@ -95,37 +95,28 @@ void mp_seq_tick(uint32_t current_ms) {
         /* Process new events that are due */
         while (ts->next_event_idx < ts->event_count) {
             const mp_note_event_t* ev = &ts->events[ts->next_event_idx];
+            uint32_t ev_start = MP_EVT_START_MS(ev);
 
-            if (ev->start_time_ms > elapsed) {
+            if (ev_start > elapsed) {
                 break;
             }
 
-            /* Determine channel */
-            uint8_t ch = ev->channel < MP_OSC_CH_COUNT ? ev->channel : ts->channel;
+            /* Unpack event fields */
+            uint8_t ch = MP_EVT_CHANNEL(ev);
+            if (ch >= MP_OSC_CH_COUNT) {
+                ch = ts->channel;
+            }
 
-            /* Set duty cycle for this note */
-            uint8_t mod = ev->mod > 0 ? ev->mod : MP_OSC_MOD_DEFAULT;
-            mp_osc_set_mod(ch, mod);
+            mp_osc_set_mod(ch, MP_EVT_MOD(ev));
+            mp_osc_set_waveform(ch, (mp_waveform_t)MP_EVT_WAVEFORM(ev));
+            mp_env_set_preset(ch, (mp_adsr_preset_t)MP_EVT_ADSR(ev));
+            mp_osc_set_freq(ch, MP_EVT_PHASE_INC(ev));
+            mp_env_note_on(ch, MP_EVT_VOLUME(ev));
 
-            /* Set waveform for this note */
-            mp_osc_set_waveform(ch, (mp_waveform_t)ev->waveform);
-
-            /* Set ADSR preset for this channel */
-            mp_env_set_preset(ch, (mp_adsr_preset_t)ev->adsr_preset);
-
-            /* Set frequency */
-            mp_osc_set_freq(ch, ev->phase_inc);
-
-            /* Trigger envelope (handles volume ramping) */
-            mp_env_note_on(ch, ev->volume);
-
-            /* Schedule note-off (release) */
-            ts->active_off_time = ev->start_time_ms + ev->duration_ms;
-
+            ts->active_off_time = ev_start + MP_EVT_DURATION_MS(ev);
             ts->next_event_idx++;
         }
 
-        /* Track is not done if there are remaining events or an active note */
         if (ts->next_event_idx < ts->event_count || ts->active_off_time > 0) {
             all_done = 0;
         }
@@ -135,7 +126,6 @@ void mp_seq_tick(uint32_t current_ms) {
     mp_env_tick();
 
     if (all_done) {
-        /* Check if any envelope is still releasing */
         uint8_t env_active = 0;
         for (uint8_t ch = 0; ch < MP_OSC_CH_COUNT; ch++) {
             if (mp_env_get_level(ch) > 0) {

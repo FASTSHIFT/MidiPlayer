@@ -2,7 +2,7 @@
  * MIT License
  * Copyright (c) 2026 VIFEX
  *
- * Unit tests for mp_sequencer
+ * Unit tests for mp_sequencer (packed event format)
  */
 #include "test_framework.h"
 #include "mock_port.h"
@@ -12,29 +12,18 @@
 
 /*
  * Use ORGAN preset (index 2): instant attack, full sustain, fast release.
- * This gives deterministic volume behavior for testing.
+ * mod_idx=0 (50% duty), waveform=0 (square)
  */
-#define TEST_MOD 127
-#define TEST_ADSR 2 /* MP_ADSR_PRESET_ORGAN */
+#define TEST_ADSR 2
+#define TEST_MOD_IDX 0
+#define TEST_WAVE 0
 
 /* Test data: simple 2-note sequence on channel 0 */
+/* Note 1: start=0ms, dur=100ms, phase_inc=1072, vol=80, ch=0 */
+/* Note 2: start=200ms, dur=100ms, phase_inc=1802, vol=60, ch=0 */
 static const mp_note_event_t test_events_ch0[] = {
-    {.start_time_ms = 0,
-     .phase_inc = 1072,
-     .duration_ms = 100,
-     .volume = 80,
-     .channel = 0,
-     .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
-    {.start_time_ms = 200,
-     .phase_inc = 1802,
-     .duration_ms = 100,
-     .volume = 60,
-     .channel = 0,
-     .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
+    {MP_EVT_PACK_WORD0(0, 100), MP_EVT_PACK_WORD1(1072, 80, 0, TEST_MOD_IDX, TEST_ADSR, TEST_WAVE)},
+    {MP_EVT_PACK_WORD0(200, 100), MP_EVT_PACK_WORD1(1802, 60, 0, TEST_MOD_IDX, TEST_ADSR, TEST_WAVE)},
 };
 
 static const mp_track_t test_tracks[] = {
@@ -45,6 +34,44 @@ static const mp_score_t test_score = {
     .tracks = test_tracks,
     .track_count = 1,
 };
+
+/* --- Packing tests --- */
+
+static void test_evt_pack_unpack(void) {
+    mp_note_event_t ev = {
+        MP_EVT_PACK_WORD0(12345, 500),
+        MP_EVT_PACK_WORD1(1072, 100, 2, 1, 3, 2),
+    };
+    TEST_ASSERT_EQUAL(12345, MP_EVT_START_MS(&ev));
+    TEST_ASSERT_EQUAL(500, MP_EVT_DURATION_MS(&ev));
+    TEST_ASSERT_EQUAL(1072, MP_EVT_PHASE_INC(&ev));
+    TEST_ASSERT_EQUAL(100, MP_EVT_VOLUME(&ev));
+    TEST_ASSERT_EQUAL(2, MP_EVT_CHANNEL(&ev));
+    TEST_ASSERT_EQUAL(1, MP_EVT_MOD_IDX(&ev));
+    TEST_ASSERT_EQUAL(64, MP_EVT_MOD(&ev)); /* idx 1 -> 64 (25%) */
+    TEST_ASSERT_EQUAL(3, MP_EVT_ADSR(&ev));
+    TEST_ASSERT_EQUAL(2, MP_EVT_WAVEFORM(&ev));
+}
+
+static void test_evt_pack_max_values(void) {
+    /* Max values for each field */
+    mp_note_event_t ev = {
+        MP_EVT_PACK_WORD0(0xFFFFF, 0xFFF),
+        MP_EVT_PACK_WORD1(0x7FFF, 127, 3, 7, 7, 3),
+    };
+    TEST_ASSERT_EQUAL(0xFFFFF, MP_EVT_START_MS(&ev));
+    TEST_ASSERT_EQUAL(0xFFF, MP_EVT_DURATION_MS(&ev));
+    TEST_ASSERT_EQUAL(0x7FFF, MP_EVT_PHASE_INC(&ev));
+    TEST_ASSERT_EQUAL(127, MP_EVT_VOLUME(&ev));
+    TEST_ASSERT_EQUAL(3, MP_EVT_CHANNEL(&ev));
+    TEST_ASSERT_EQUAL(7, MP_EVT_MOD_IDX(&ev));
+    TEST_ASSERT_EQUAL(7, MP_EVT_ADSR(&ev));
+    TEST_ASSERT_EQUAL(3, MP_EVT_WAVEFORM(&ev));
+}
+
+static void test_evt_struct_size(void) {
+    TEST_ASSERT_EQUAL(8, sizeof(mp_note_event_t));
+}
 
 /* --- Init tests --- */
 
@@ -83,13 +110,11 @@ static void test_seq_first_note_triggers(void) {
     mp_env_init();
     mp_seq_play(&test_score);
 
-    /* First tick triggers note + envelope tick */
     mp_seq_tick(1000);
 
     struct mp_osc_params* p = mp_osc_get_params(0);
     TEST_ASSERT_EQUAL(1072, p->phase_increment);
-    /* ORGAN preset: attack=2 ticks, so after 1 tick we're ramping.
-       Run a couple more ticks to reach peak. */
+    /* ORGAN: attack=2 ticks, run a few more to reach peak */
     mp_seq_tick(1001);
     mp_seq_tick(1002);
     TEST_ASSERT_EQUAL(80, p->vol);
@@ -100,7 +125,6 @@ static void test_seq_note_off_after_duration(void) {
     mp_env_init();
     mp_seq_play(&test_score);
 
-    /* Trigger and let attack complete */
     for (uint32_t t = 1000; t < 1005; t++) {
         mp_seq_tick(t);
     }
@@ -108,8 +132,7 @@ static void test_seq_note_off_after_duration(void) {
     struct mp_osc_params* p = mp_osc_get_params(0);
     TEST_ASSERT_EQUAL(80, p->vol);
 
-    /* After 100ms, note releases. ORGAN release=100 ticks (50ms).
-       Run enough ticks for release to complete. */
+    /* After 100ms + release (100 ticks = 50ms) */
     for (uint32_t t = 1100; t < 1200; t++) {
         mp_seq_tick(t);
     }
@@ -121,12 +144,10 @@ static void test_seq_second_note_triggers(void) {
     mp_env_init();
     mp_seq_play(&test_score);
 
-    /* Process through first note and its release */
     for (uint32_t t = 1000; t < 1200; t++) {
         mp_seq_tick(t);
     }
 
-    /* At 200ms, second note triggers */
     mp_seq_tick(1200);
     mp_seq_tick(1201);
     mp_seq_tick(1202);
@@ -141,7 +162,6 @@ static void test_seq_auto_stop_after_all_notes(void) {
     mp_env_init();
     mp_seq_play(&test_score);
 
-    /* Run through entire score with enough time for all envelopes */
     for (uint32_t t = 1000; t < 1500; t++) {
         mp_seq_tick(t);
     }
@@ -152,14 +172,7 @@ static void test_seq_auto_stop_after_all_notes(void) {
 /* --- Multi-track test --- */
 
 static const mp_note_event_t test_events_ch1[] = {
-    {.start_time_ms = 50,
-     .phase_inc = 536,
-     .duration_ms = 150,
-     .volume = 70,
-     .channel = 1,
-     .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
+    {MP_EVT_PACK_WORD0(50, 150), MP_EVT_PACK_WORD1(536, 70, 1, TEST_MOD_IDX, TEST_ADSR, TEST_WAVE)},
 };
 
 static const mp_track_t test_multi_tracks[] = {
@@ -177,7 +190,6 @@ static void test_seq_multitrack_simultaneous(void) {
     mp_env_init();
     mp_seq_play(&test_multi_score);
 
-    /* Tick through to let both notes trigger and attack complete */
     for (uint32_t t = 1000; t < 1055; t++) {
         mp_seq_tick(t);
     }
@@ -194,14 +206,7 @@ static void test_seq_multitrack_simultaneous(void) {
 /* --- Duty cycle test --- */
 
 static const mp_note_event_t test_events_mod[] = {
-    {.start_time_ms = 0,
-     .phase_inc = 1072,
-     .duration_ms = 100,
-     .volume = 80,
-     .channel = 0,
-     .mod = 64,
-     .adsr_preset = TEST_ADSR,
-     .waveform = 0},
+    {MP_EVT_PACK_WORD0(0, 100), MP_EVT_PACK_WORD1(1072, 80, 0, 1, TEST_ADSR, TEST_WAVE)}, /* mod_idx=1 -> 64 (25%) */
 };
 
 static const mp_track_t test_tracks_mod[] = {
@@ -227,6 +232,9 @@ static void test_seq_duty_cycle_applied(void) {
 void test_sequencer_run(void) {
     TEST_SUITE_BEGIN("Sequencer Tests");
 
+    RUN_TEST(test_evt_pack_unpack);
+    RUN_TEST(test_evt_pack_max_values);
+    RUN_TEST(test_evt_struct_size);
     RUN_TEST(test_seq_init_not_playing);
     RUN_TEST(test_seq_play_starts);
     RUN_TEST(test_seq_stop);

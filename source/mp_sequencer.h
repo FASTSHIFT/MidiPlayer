@@ -21,17 +21,64 @@ extern "C" {
 #define MP_SEQ_MAX_TRACKS 4
 #endif
 
-/* Note event structure (compact for Flash storage) */
+/*
+ * Packed note event structure — 8 bytes per event (50% smaller than unpacked).
+ *
+ * Layout (two 32-bit words, total 64 bits):
+ *
+ *   Word 0 [31:0]:
+ *     start_time_ms [19:0]  — 20 bits, max 1048575 ms (~17 min)
+ *     duration_ms   [31:20] — 12 bits, max 4095 ms
+ *
+ *   Word 1 [31:0]:
+ *     phase_inc     [14:0]  — 15 bits, max 32767 (covers C1..C8)
+ *     volume        [21:15] —  7 bits, 0~127
+ *     channel       [23:22] —  2 bits, 0~3
+ *     mod_idx       [26:24] —  3 bits, index into duty cycle table
+ *     adsr_preset   [29:27] —  3 bits, 0~7
+ *     waveform      [31:30] —  2 bits, 0~3
+ */
 typedef struct {
-    uint32_t start_time_ms; /* Absolute start time in milliseconds */
-    uint16_t phase_inc;     /* Phase increment (from note table) */
-    uint16_t duration_ms;   /* Note duration in milliseconds */
-    uint8_t volume;         /* Velocity (0~127) */
-    uint8_t channel;        /* Oscillator channel to use (0~3) */
-    uint8_t mod;            /* Duty cycle (0~255, 127=50%, 64=25%) */
-    uint8_t adsr_preset;    /* ADSR preset index (mp_adsr_preset_t) */
-    uint8_t waveform;       /* Waveform type (mp_waveform_t) */
+    uint32_t word0;
+    uint32_t word1;
 } mp_note_event_t;
+
+/* Duty cycle lookup table indexed by mod_idx (3 bits, 0~7) */
+/* clang-format off */
+#define MP_MOD_TABLE_SIZE 8
+static const uint8_t mp_mod_table[MP_MOD_TABLE_SIZE] = {
+    127,  /* 0: 50%   — classic square */
+    64,   /* 1: 25%   — bright, thin */
+    32,   /* 2: 12.5% — very thin, nasal */
+    191,  /* 3: 75%   — hollow */
+    96,   /* 4: 37.5% — slightly bright */
+    160,  /* 5: 62.5% — slightly hollow */
+    16,   /* 6: 6.25% — extremely thin */
+    0,    /* 7: reserved (treated as 50%) */
+};
+/* clang-format on */
+
+/* --- Accessor macros for packed fields --- */
+
+#define MP_EVT_START_MS(e) ((e)->word0 & 0xFFFFF)
+#define MP_EVT_DURATION_MS(e) ((e)->word0 >> 20)
+#define MP_EVT_PHASE_INC(e) ((e)->word1 & 0x7FFF)
+#define MP_EVT_VOLUME(e) (((e)->word1 >> 15) & 0x7F)
+#define MP_EVT_CHANNEL(e) (((e)->word1 >> 22) & 0x03)
+#define MP_EVT_MOD_IDX(e) (((e)->word1 >> 24) & 0x07)
+#define MP_EVT_ADSR(e) (((e)->word1 >> 27) & 0x07)
+#define MP_EVT_WAVEFORM(e) (((e)->word1 >> 30) & 0x03)
+
+/* Convenience: get actual mod value from index */
+#define MP_EVT_MOD(e) (mp_mod_table[MP_EVT_MOD_IDX(e)])
+
+/* --- Pack helper (for converter / tests) --- */
+
+#define MP_EVT_PACK_WORD0(start_ms, dur_ms) (((uint32_t)(start_ms)&0xFFFFF) | (((uint32_t)(dur_ms)&0xFFF) << 20))
+
+#define MP_EVT_PACK_WORD1(phase_inc, vol, ch, mod_idx, adsr, wave)                                   \
+    (((uint32_t)(phase_inc)&0x7FFF) | (((uint32_t)(vol)&0x7F) << 15) | (((uint32_t)(ch)&0x03) << 22) \
+     | (((uint32_t)(mod_idx)&0x07) << 24) | (((uint32_t)(adsr)&0x07) << 27) | (((uint32_t)(wave)&0x03) << 30))
 
 /* Track descriptor */
 typedef struct {
@@ -70,8 +117,6 @@ uint8_t mp_seq_is_playing(void);
 /**
  * @brief  Advance the sequencer by one tick
  * @param  current_ms: current time in milliseconds
- * @note   Call this periodically (e.g., at 2kHz from the oscillator prescaler,
- *         or from main loop using mp_port_get_tick_ms())
  */
 void mp_seq_tick(uint32_t current_ms);
 
