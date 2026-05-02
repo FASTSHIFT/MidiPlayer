@@ -32,3 +32,15 @@ uint16_t mp_audio_tick(void) {
 void mp_update(uint32_t current_ms) {
     mp_seq_tick(current_ms);
 }
+
+uint32_t mp_get_elapsed_ms(void) {
+    return mp_seq_get_elapsed_ms();
+}
+
+uint32_t mp_get_total_ms(void) {
+    return mp_seq_get_total_ms();
+}
+
+uint8_t mp_get_progress_pct(void) {
+    return mp_seq_get_progress_pct();
+}

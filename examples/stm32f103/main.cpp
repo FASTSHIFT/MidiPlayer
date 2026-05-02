@@ -60,32 +60,35 @@ int main(void) {
 
     buzzer_test();
 
-    Serial.println("PWM: PA0 (TIM2_CH1), ~70kHz 10-bit");
-    Serial.println("Sample rate: 16kHz (TIM3)");
-
+    Serial.println("Initializing MidiPlayer...");
     mp_init();
-    Serial.println("mp_init() done");
-
     audio_hw_init();
-    Serial.println("audio_hw_init() done");
 
+    Serial.println("Playing...\n");
     mp_play(&midi_score);
-    Serial.println("mp_play() started");
+
+    Serial.printf("Duration: %lu ms\r\n\r\n", (unsigned long)mp_get_total_ms());
 
     uint32_t last_print = 0;
     while (1) {
         uint32_t now = millis();
-        if (now - last_print >= 2000) {
+
+        if (now - last_print >= 1000) {
             last_print = now;
-            Serial.printf("[%lu ms] playing=%d\r\n", (unsigned long)now, mp_is_playing());
+            if (mp_is_playing()) {
+                uint32_t elapsed = mp_get_elapsed_ms();
+                uint32_t total = mp_get_total_ms();
+                uint8_t pct = mp_get_progress_pct();
+                Serial.printf("[%3d%%] %lu / %lu ms\r\n", pct, (unsigned long)elapsed, (unsigned long)total);
+            }
         }
 
         if (!mp_is_playing()) {
-            Serial.println("Playback finished, restarting in 1s...");
-            delay_ms(1000);
+            Serial.println("\nPlayback finished, restarting in 2s...\n");
+            delay(2000);
             mp_play(&midi_score);
-            Serial.println("mp_play() restarted");
         }
-        delay_ms(100);
+
+        delay(50);
     }
 }

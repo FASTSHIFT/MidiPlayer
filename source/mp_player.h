@@ -52,12 +52,23 @@ uint16_t mp_audio_tick(void);
 /**
  * @brief  Sequencer tick - call periodically with current time
  * @param  current_ms: current time in milliseconds
- *
- * Can be called from main loop or from a lower-frequency timer.
- * The oscillator prescaler calls this at 2kHz internally if you
- * use mp_audio_tick_with_sequencer() instead.
  */
 void mp_update(uint32_t current_ms);
+
+/**
+ * @brief  Get elapsed playback time in milliseconds
+ */
+uint32_t mp_get_elapsed_ms(void);
+
+/**
+ * @brief  Get total score duration in milliseconds
+ */
+uint32_t mp_get_total_ms(void);
+
+/**
+ * @brief  Get playback progress as percentage (0~100)
+ */
+uint8_t mp_get_progress_pct(void);
 
 #ifdef __cplusplus
 }

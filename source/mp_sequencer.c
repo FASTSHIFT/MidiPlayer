@@ -26,12 +26,16 @@ static struct {
     uint8_t track_count;
     uint8_t playing;
     uint32_t start_ms;
+    uint32_t total_duration_ms; /* Total score duration */
+    uint32_t last_elapsed_ms;   /* Last computed elapsed time */
 } seq_state;
 
 void mp_seq_init(void) {
     seq_state.track_count = 0;
     seq_state.playing = 0;
     seq_state.start_ms = 0;
+    seq_state.total_duration_ms = 0;
+    seq_state.last_elapsed_ms = 0;
 }
 
 void mp_seq_play(const mp_score_t* score) {
@@ -58,6 +62,20 @@ void mp_seq_play(const mp_score_t* score) {
 
     seq_state.track_count = count;
     seq_state.playing = 1;
+
+    /* Compute total score duration from all tracks */
+    uint32_t max_end = 0;
+    for (uint8_t i = 0; i < count; i++) {
+        const mp_track_t* trk = &score->tracks[i];
+        if (trk->event_count > 0) {
+            const mp_note_event_t* last = &trk->events[trk->event_count - 1];
+            uint32_t end = MP_EVT_START_MS(last) + MP_EVT_DURATION_MS(last);
+            if (end > max_end) {
+                max_end = end;
+            }
+        }
+    }
+    seq_state.total_duration_ms = max_end;
     seq_state.start_ms = 0;
 }
 
@@ -80,6 +98,7 @@ void mp_seq_tick(uint32_t current_ms) {
     }
 
     uint32_t elapsed = current_ms - seq_state.start_ms;
+    seq_state.last_elapsed_ms = elapsed;
     uint8_t all_done = 1;
 
     for (uint8_t t = 0; t < seq_state.track_count; t++) {
@@ -137,4 +156,20 @@ void mp_seq_tick(uint32_t current_ms) {
             mp_seq_stop();
         }
     }
+}
+
+uint32_t mp_seq_get_elapsed_ms(void) {
+    return seq_state.last_elapsed_ms;
+}
+
+uint32_t mp_seq_get_total_ms(void) {
+    return seq_state.total_duration_ms;
+}
+
+uint8_t mp_seq_get_progress_pct(void) {
+    if (seq_state.total_duration_ms == 0) {
+        return 0;
+    }
+    uint32_t pct = seq_state.last_elapsed_ms * 100 / seq_state.total_duration_ms;
+    return pct > 100 ? 100 : (uint8_t)pct;
 }

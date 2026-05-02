@@ -120,6 +120,21 @@ uint8_t mp_seq_is_playing(void);
  */
 void mp_seq_tick(uint32_t current_ms);
 
+/**
+ * @brief  Get elapsed playback time in milliseconds
+ */
+uint32_t mp_seq_get_elapsed_ms(void);
+
+/**
+ * @brief  Get total score duration in milliseconds
+ */
+uint32_t mp_seq_get_total_ms(void);
+
+/**
+ * @brief  Get playback progress as percentage (0~100)
+ */
+uint8_t mp_seq_get_progress_pct(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -90,6 +90,51 @@ static void test_player_audio_has_variation(void) {
     TEST_ASSERT_TRUE(non_dc_count > 0);
 }
 
+/* --- Progress query tests --- */
+
+static void test_player_progress_before_play(void) {
+    mock_port_install();
+    mp_init();
+    TEST_ASSERT_EQUAL(0, mp_get_elapsed_ms());
+    TEST_ASSERT_EQUAL(0, mp_get_total_ms());
+    TEST_ASSERT_EQUAL(0, mp_get_progress_pct());
+}
+
+static void test_player_total_duration(void) {
+    mock_port_install();
+    mp_init();
+    mp_play(&player_test_score);
+
+    /* Score: note at 0ms(50ms) + note at 100ms(50ms) -> total = 150ms */
+    TEST_ASSERT_EQUAL(150, mp_get_total_ms());
+}
+
+static void test_player_progress_during_playback(void) {
+    mock_port_install();
+    mp_init();
+    mp_play(&player_test_score);
+
+    /* Tick from 1 to 76 (75ms elapsed, start_ms=1) */
+    for (uint32_t ms = 1; ms <= 76; ms++) {
+        mp_update(ms);
+    }
+    uint8_t pct = mp_get_progress_pct();
+    TEST_ASSERT_IN_RANGE(pct, 45, 55);
+    TEST_ASSERT_EQUAL(75, mp_get_elapsed_ms());
+}
+
+static void test_player_progress_at_end(void) {
+    mock_port_install();
+    mp_init();
+    mp_play(&player_test_score);
+
+    /* Run past the end */
+    for (uint32_t ms = 0; ms < 300; ms++) {
+        mp_update(ms);
+    }
+    TEST_ASSERT_EQUAL(100, mp_get_progress_pct());
+}
+
 void test_player_run(void) {
     TEST_SUITE_BEGIN("Player Integration Tests");
 
@@ -98,6 +143,10 @@ void test_player_run(void) {
     RUN_TEST(test_player_audio_tick_returns_valid);
     RUN_TEST(test_player_full_playback);
     RUN_TEST(test_player_audio_has_variation);
+    RUN_TEST(test_player_progress_before_play);
+    RUN_TEST(test_player_total_duration);
+    RUN_TEST(test_player_progress_during_playback);
+    RUN_TEST(test_player_progress_at_end);
 
     TEST_SUITE_END();
 }
