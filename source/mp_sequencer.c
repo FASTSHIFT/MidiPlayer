@@ -107,6 +107,9 @@ void mp_seq_tick(uint32_t current_ms) {
             uint8_t mod = ev->mod > 0 ? ev->mod : MP_OSC_MOD_DEFAULT;
             mp_osc_set_mod(ch, mod);
 
+            /* Set waveform for this note */
+            mp_osc_set_waveform(ch, (mp_waveform_t)ev->waveform);
+
             /* Set ADSR preset for this channel */
             mp_env_set_preset(ch, (mp_adsr_preset_t)ev->adsr_preset);
 

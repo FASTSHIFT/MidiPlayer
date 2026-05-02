@@ -201,6 +201,100 @@ static void test_osc_frequency_changes_output(void) {
     TEST_ASSERT_TRUE(high_transitions >= low_transitions);
 }
 
+/* --- Waveform tests --- */
+
+static void test_osc_triangle_wave_smooth(void) {
+    mp_osc_init();
+    mp_osc_set_vol(0, 64);
+    mp_osc_set_freq(0, 1000);
+    mp_osc_set_waveform(0, MP_WAVE_TRIANGLE);
+
+    /* Triangle wave should have many distinct values (smooth ramp) */
+    uint16_t prev = mp_osc_mix_sample();
+    int distinct_values = 1;
+    int small_steps = 0;
+    for (int i = 0; i < 256; i++) {
+        uint16_t s = mp_osc_mix_sample();
+        if (s != prev) {
+            distinct_values++;
+            /* Steps should be small (smooth), not jumping between two extremes */
+            int diff = (int)s - (int)prev;
+            if (diff < 0)
+                diff = -diff;
+            if (diff < 10)
+                small_steps++;
+        }
+        prev = s;
+    }
+    /* Triangle should have many more distinct values than square (which has only 2) */
+    TEST_ASSERT_TRUE(distinct_values > 10);
+    /* Most transitions should be small steps */
+    TEST_ASSERT_TRUE(small_steps > distinct_values / 2);
+}
+
+static void test_osc_sawtooth_wave_range(void) {
+    mp_osc_init();
+    mp_osc_set_vol(0, 64);
+    mp_osc_set_freq(0, 1000);
+    mp_osc_set_waveform(0, MP_WAVE_SAWTOOTH);
+
+    uint16_t min_val = 1023;
+    uint16_t max_val = 0;
+    for (int i = 0; i < 500; i++) {
+        uint16_t s = mp_osc_mix_sample();
+        if (s < min_val)
+            min_val = s;
+        if (s > max_val)
+            max_val = s;
+    }
+    /* Should swing around DC offset */
+    TEST_ASSERT_TRUE(min_val < MP_OSC_DC_OFFSET);
+    TEST_ASSERT_TRUE(max_val > MP_OSC_DC_OFFSET);
+    TEST_ASSERT_IN_RANGE(min_val, 400, 520);
+    TEST_ASSERT_IN_RANGE(max_val, 500, 600);
+}
+
+static void test_osc_pulse25_wave(void) {
+    mp_osc_init();
+    mp_osc_set_vol(0, 64);
+    mp_osc_set_freq(0, 1000);
+    mp_osc_set_waveform(0, MP_WAVE_PULSE_25);
+
+    /* Pulse 25% should spend ~25% of time high, ~75% low */
+    int high_count = 0;
+    int total = 1000;
+    for (int i = 0; i < total; i++) {
+        uint16_t s = mp_osc_mix_sample();
+        if (s > MP_OSC_DC_OFFSET)
+            high_count++;
+    }
+    /* Should be roughly 25% high (allow wide tolerance for phase alignment) */
+    TEST_ASSERT_IN_RANGE(high_count, total / 8, total / 2);
+}
+
+static void test_osc_waveform_invalid(void) {
+    mp_osc_init();
+    /* Setting invalid waveform should be ignored */
+    mp_osc_set_waveform(0, MP_WAVE_COUNT);
+    struct mp_osc_params* p = mp_osc_get_params(0);
+    TEST_ASSERT_EQUAL(MP_WAVE_SQUARE, p->waveform); /* Should stay at default */
+}
+
+static void test_osc_all_waveforms_in_range(void) {
+    /* All waveform types should produce output in valid 10-bit range */
+    for (uint8_t w = 0; w < MP_WAVE_COUNT; w++) {
+        mp_osc_init();
+        mp_osc_set_vol(0, MP_OSC_MAX_VOLUME);
+        mp_osc_set_freq(0, 1000);
+        mp_osc_set_waveform(0, (mp_waveform_t)w);
+
+        for (int i = 0; i < 500; i++) {
+            uint16_t s = mp_osc_mix_sample();
+            TEST_ASSERT_IN_RANGE(s, 0, 1023);
+        }
+    }
+}
+
 /* --- Test suite entry --- */
 
 void test_osc_run(void) {
@@ -217,6 +311,11 @@ void test_osc_run(void) {
     RUN_TEST(test_osc_silence_all);
     RUN_TEST(test_osc_invalid_channel);
     RUN_TEST(test_osc_frequency_changes_output);
+    RUN_TEST(test_osc_triangle_wave_smooth);
+    RUN_TEST(test_osc_sawtooth_wave_range);
+    RUN_TEST(test_osc_pulse25_wave);
+    RUN_TEST(test_osc_waveform_invalid);
+    RUN_TEST(test_osc_all_waveforms_in_range);
 
     TEST_SUITE_END();
 }

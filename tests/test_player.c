@@ -20,14 +20,16 @@ static const mp_note_event_t player_test_events[] = {
      .volume = 100,
      .channel = 0,
      .mod = 127,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
     {.start_time_ms = 100,
      .phase_inc = 1802,
      .duration_ms = 50,
      .volume = 80,
      .channel = 0,
      .mod = 127,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
 };
 
 static const mp_track_t player_test_tracks[] = {

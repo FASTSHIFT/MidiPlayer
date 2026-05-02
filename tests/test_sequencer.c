@@ -25,14 +25,16 @@ static const mp_note_event_t test_events_ch0[] = {
      .volume = 80,
      .channel = 0,
      .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
     {.start_time_ms = 200,
      .phase_inc = 1802,
      .duration_ms = 100,
      .volume = 60,
      .channel = 0,
      .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
 };
 
 static const mp_track_t test_tracks[] = {
@@ -156,7 +158,8 @@ static const mp_note_event_t test_events_ch1[] = {
      .volume = 70,
      .channel = 1,
      .mod = TEST_MOD,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
 };
 
 static const mp_track_t test_multi_tracks[] = {
@@ -197,7 +200,8 @@ static const mp_note_event_t test_events_mod[] = {
      .volume = 80,
      .channel = 0,
      .mod = 64,
-     .adsr_preset = TEST_ADSR},
+     .adsr_preset = TEST_ADSR,
+     .waveform = 0},
 };
 
 static const mp_track_t test_tracks_mod[] = {

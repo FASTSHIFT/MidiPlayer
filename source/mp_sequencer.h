@@ -30,6 +30,7 @@ typedef struct {
     uint8_t channel;        /* Oscillator channel to use (0~3) */
     uint8_t mod;            /* Duty cycle (0~255, 127=50%, 64=25%) */
     uint8_t adsr_preset;    /* ADSR preset index (mp_adsr_preset_t) */
+    uint8_t waveform;       /* Waveform type (mp_waveform_t) */
 } mp_note_event_t;
 
 /* Track descriptor */

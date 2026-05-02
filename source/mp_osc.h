@@ -4,8 +4,8 @@
  *
  * MidiPlayer - Oscillator / Mixer
  *
- * Multi-channel square wave synthesizer with LFSR noise.
- * Ported from ATMLib2 (evade2 project), rewritten as platform-independent pure C.
+ * Multi-channel synthesizer with square, triangle, sawtooth waveforms
+ * and LFSR noise. Platform-independent pure C.
  */
 #ifndef MP_OSC_H
 #define MP_OSC_H
@@ -16,7 +16,7 @@
 extern "C" {
 #endif
 
-/* Configurable channel count (default 4: 3 square + 1 noise) */
+/* Configurable channel count (default 4: 3 melodic + 1 noise) */
 #ifndef MP_OSC_CH_COUNT
 #define MP_OSC_CH_COUNT 4
 #endif
@@ -26,7 +26,7 @@ extern "C" {
 #define MP_OSC_PWM_BITS 10
 #define MP_OSC_DC_OFFSET (1 << (MP_OSC_PWM_BITS - 1)) /* 512 */
 #define MP_OSC_MAX_VOLUME 127
-#define MP_OSC_MOD_DEFAULT 0x7F /* 50% duty cycle */
+#define MP_OSC_MOD_DEFAULT 0x7F /* 50% duty cycle (square wave) */
 
 /* ISR prescaler: tick handler runs at SAMPLE_RATE / PRESCALER_DIV */
 #define MP_OSC_PRESCALER_DIV 8
@@ -34,11 +34,21 @@ extern "C" {
 /* Noise channel is always the last channel */
 #define MP_OSC_NOISE_CH (MP_OSC_CH_COUNT - 1)
 
+/* Waveform types for melodic channels */
+typedef enum {
+    MP_WAVE_SQUARE = 0, /* Classic square wave (duty cycle via mod) */
+    MP_WAVE_TRIANGLE,   /* Triangle wave (soft, flute-like) */
+    MP_WAVE_SAWTOOTH,   /* Sawtooth wave (rich harmonics, string-like) */
+    MP_WAVE_PULSE_25,   /* Fixed 25% pulse (bright, thin) */
+    MP_WAVE_COUNT,
+} mp_waveform_t;
+
 /* Per-channel oscillator parameters */
 struct mp_osc_params {
     uint8_t mod;              /* Duty cycle modulation (0~255, 127=50%) */
     uint8_t vol;              /* Volume (0~127) */
     uint16_t phase_increment; /* Frequency control word */
+    uint8_t waveform;         /* Waveform type (mp_waveform_t) */
 };
 
 /**
@@ -62,24 +72,23 @@ struct mp_osc_params* mp_osc_get_params(uint8_t ch);
 
 /**
  * @brief  Set channel frequency via phase increment
- * @param  ch: channel index
- * @param  phase_inc: phase increment value (higher = higher frequency)
  */
 void mp_osc_set_freq(uint8_t ch, uint16_t phase_inc);
 
 /**
- * @brief  Set channel volume
- * @param  ch: channel index
- * @param  vol: volume (0 ~ 127)
+ * @brief  Set channel volume (0 ~ 127)
  */
 void mp_osc_set_vol(uint8_t ch, uint8_t vol);
 
 /**
- * @brief  Set channel duty cycle modulation
- * @param  ch: channel index
- * @param  mod: modulation value (0~255, 127=50%)
+ * @brief  Set channel duty cycle modulation (0~255, 127=50%)
  */
 void mp_osc_set_mod(uint8_t ch, uint8_t mod);
+
+/**
+ * @brief  Set channel waveform type
+ */
+void mp_osc_set_waveform(uint8_t ch, mp_waveform_t waveform);
 
 /**
  * @brief  Silence all channels
