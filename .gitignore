@@ -39,3 +39,7 @@ __pycache__/
 # Reference project symlinks
 evade2_ref
 FPBInject_ref
+
+# MIDI resource files (keep Pirates for CI test, ignore others)
+resources/*.mid
+!resources/Pirates of the Caribbean - He's a Pirate.mid
