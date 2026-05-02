@@ -25,6 +25,9 @@ void mock_port_reset(void);
 void mock_port_set_tick(uint32_t ms);
 void mock_port_advance_tick(uint32_t ms);
 
+/* Register mock callbacks with mp_port_init() */
+void mock_port_install(void);
+
 #ifdef __cplusplus
 }
 #endif

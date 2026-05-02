@@ -23,13 +23,13 @@
 /* Prescaler counter for sequencer tick */
 static uint8_t prescaler_count = 8;
 
-/* mp_port.h implementation */
+/* Platform callbacks */
 
-void mp_port_audio_write(uint16_t value) {
+static void stm32_audio_write(uint16_t value) {
     AUDIO_PWM_TIM->CCR1 = value;
 }
 
-uint32_t mp_port_get_tick_ms(void) {
+static uint32_t stm32_get_tick(void) {
     return millis();
 }
 
@@ -38,7 +38,6 @@ static void audio_sample_isr(void) {
     uint16_t sample = mp_audio_tick();
     mp_port_audio_write(sample);
 
-    /* Prescaler: run sequencer at 2kHz (every 8 samples) */
     if (--prescaler_count == 0) {
         prescaler_count = 8;
         mp_update(mp_port_get_tick_ms());
@@ -46,6 +45,13 @@ static void audio_sample_isr(void) {
 }
 
 void audio_hw_init(void) {
+    /* Register platform callbacks */
+    mp_port_t port = {
+        .audio_write = stm32_audio_write,
+        .get_tick_ms = stm32_get_tick,
+    };
+    mp_port_init(&port);
+
     /* Configure PA0 as TIM2_CH1 alternate function push-pull */
     pinMode(AUDIO_PWM_PIN, OUTPUT_AF);
 
@@ -56,8 +62,7 @@ void audio_hw_init(void) {
     mp_port_audio_write(MP_OSC_DC_OFFSET);
 
     /* Configure TIM3 as 16kHz sample rate interrupt */
-    /* period=4500, prescaler=1 -> 72MHz / (4500 * 1) = 16kHz */
-    Timer_SetInterruptBase(AUDIO_SR_TIM, 4500,  /* period */
+    Timer_SetInterruptBase(AUDIO_SR_TIM, 4500,  /* period: 72MHz / 4500 = 16kHz */
                            1,                   /* prescaler */
                            audio_sample_isr, 0, /* preemption priority (highest) */
                            0                    /* sub priority */

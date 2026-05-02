@@ -20,6 +20,7 @@ endif()
 
 # Source files
 set(MIDIPLAYER_SOURCES
+    ${MIDIPLAYER_ROOT}/source/mp_port.c
     ${MIDIPLAYER_ROOT}/source/mp_osc.c
     ${MIDIPLAYER_ROOT}/source/mp_envelope.c
     ${MIDIPLAYER_ROOT}/source/mp_note_table.c

@@ -27,11 +27,13 @@ static const mp_score_t player_test_score = {
 };
 
 static void test_player_init(void) {
+    mock_port_install();
     mp_init();
     TEST_ASSERT_FALSE(mp_is_playing());
 }
 
 static void test_player_play_stop(void) {
+    mock_port_install();
     mp_init();
     mp_play(&player_test_score);
     TEST_ASSERT_TRUE(mp_is_playing());
@@ -40,12 +42,14 @@ static void test_player_play_stop(void) {
 }
 
 static void test_player_audio_tick_returns_valid(void) {
+    mock_port_install();
     mp_init();
     uint16_t sample = mp_audio_tick();
     TEST_ASSERT_EQUAL(MP_OSC_DC_OFFSET, sample);
 }
 
 static void test_player_full_playback(void) {
+    mock_port_install();
     mp_init();
     mock_port_reset();
 
@@ -65,6 +69,7 @@ static void test_player_full_playback(void) {
 }
 
 static void test_player_audio_has_variation(void) {
+    mock_port_install();
     mp_init();
     mock_port_reset();
 
