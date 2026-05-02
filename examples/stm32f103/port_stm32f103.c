@@ -61,11 +61,7 @@ void audio_hw_init(void) {
     /* Set initial duty to DC offset (silence) */
     mp_port_audio_write(MP_OSC_DC_OFFSET);
 
-    /* Configure TIM3 as 16kHz sample rate interrupt */
-    Timer_SetInterruptBase(AUDIO_SR_TIM, 4500,  /* period: 72MHz / 4500 = 16kHz */
-                           1,                   /* prescaler */
-                           audio_sample_isr, 0, /* preemption priority (highest) */
-                           0                    /* sub priority */
-    );
+    /* Configure TIM3 as 16kHz sample rate interrupt (62.5us period) */
+    Timer_SetInterrupt(AUDIO_SR_TIM, 1000000 / 16000, audio_sample_isr);
     Timer_SetEnable(AUDIO_SR_TIM, true);
 }
