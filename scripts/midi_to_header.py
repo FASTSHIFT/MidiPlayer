@@ -102,6 +102,10 @@ def midi_note_to_phase_inc(note):
     return round(freq * 65536 / SAMPLE_RATE)
 
 
+# Maximum note duration in ms (cap very long notes to avoid channel hogging)
+MAX_NOTE_DURATION_MS = 5000
+
+
 def parse_midi(filename, max_tracks):
     mid = mido.MidiFile(filename)
     tracks = []
@@ -111,6 +115,7 @@ def parse_midi(filename, max_tracks):
         current_time = 0.0
         tempo = 500000  # default 120 BPM
         current_program = 0
+        current_channel = -1
         note_on_times = {}
         note_on_velocities = {}
 
@@ -124,6 +129,11 @@ def parse_midi(filename, max_tracks):
 
             if msg.type == 'program_change':
                 current_program = msg.program
+                current_channel = msg.channel
+                continue
+
+            # Skip MIDI channel 9 (0-indexed) — General MIDI percussion
+            if hasattr(msg, 'channel') and msg.channel == 9:
                 continue
 
             if msg.type == 'note_on' and msg.velocity > 0:
@@ -140,6 +150,10 @@ def parse_midi(filename, max_tracks):
                     volume = min(note_on_velocities[msg.note], 127)
                     mod, adsr, waveform = get_instrument_params(program)
 
+                    # Cap very long notes
+                    if duration_ms > MAX_NOTE_DURATION_MS:
+                        duration_ms = MAX_NOTE_DURATION_MS
+
                     if phase_inc > 0 and duration_ms > 0:
                         events.append((start_ms, phase_inc, duration_ms, volume, mod, adsr, waveform))
 
@@ -150,6 +164,9 @@ def parse_midi(filename, max_tracks):
             events.sort(key=lambda e: e[0])
             tracks.append(events)
 
+    # Report percussion tracks that were skipped
+    total_tracks_with_notes = len(tracks)
+
     if len(tracks) > max_tracks:
         tracks.sort(key=lambda t: len(t), reverse=True)
         tracks = tracks[:max_tracks]
@@ -158,25 +175,33 @@ def parse_midi(filename, max_tracks):
 
 
 def assign_channels(tracks):
-    """Assign oscillator channels to note events."""
-    max_ch = 3
+    """Assign oscillator channels to note events.
+
+    Only uses channels 0-2 (square/triangle/sawtooth).
+    Channel 3 (noise) is reserved and never assigned to melodic notes.
+    Multiple tracks share the 3 melodic channels via round-robin + spillover.
+    """
+    num_melodic_ch = 3  # channels 0, 1, 2 only
 
     for track_idx, events in enumerate(tracks):
-        base_ch = track_idx % (max_ch + 1)
-        active = {}
+        base_ch = track_idx % num_melodic_ch
+        active = {}  # channel -> off_time
 
         for i, (start_ms, phase_inc, duration_ms, volume, mod, adsr, waveform) in enumerate(events):
             assigned_ch = base_ch
+            # Release expired notes
             expired = [ch for ch, off in active.items() if off <= start_ms]
             for ch in expired:
                 del active[ch]
 
+            # If base channel is busy, try other melodic channels
             if base_ch in active:
-                for ch in range(max_ch + 1):
+                for ch in range(num_melodic_ch):
                     if ch not in active:
                         assigned_ch = ch
                         break
                 else:
+                    # All melodic channels busy, steal base channel
                     assigned_ch = base_ch
 
             active[assigned_ch] = start_ms + duration_ms
