@@ -17,33 +17,20 @@ extern "C" {
 #define BUZZER_PIN PA0
 
 static void buzzer_test(void) {
-    Serial.println("Buzzer test on PA0...");
+    Serial.println("Buzzer test...");
+    pinMode(BUZZER_PIN, OUTPUT);
 
-    Serial.println("  C5 (523Hz)");
     tone(BUZZER_PIN, 523);
     delay(300);
     noTone(BUZZER_PIN);
     delay(100);
 
-    Serial.println("  E5 (659Hz)");
-    tone(BUZZER_PIN, 659);
-    delay(300);
-    noTone(BUZZER_PIN);
-    delay(100);
-
-    Serial.println("  G5 (784Hz)");
-    tone(BUZZER_PIN, 784);
-    delay(300);
-    noTone(BUZZER_PIN);
-    delay(100);
-
-    Serial.println("  C6 (1047Hz)");
     tone(BUZZER_PIN, 1047);
-    delay(500);
+    delay(300);
     noTone(BUZZER_PIN);
 
     Serial.println("Buzzer test done.\n");
-    delay(500);
+    delay(300);
 }
 
 int main(void) {
