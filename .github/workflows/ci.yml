@@ -1,0 +1,88 @@
+name: MidiPlayer CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "source/**"
+      - "tests/**"
+      - "examples/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  unit-tests:
+    name: Unit Tests + Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y lcov bc
+
+      - name: Run tests with coverage
+        working-directory: tests
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh coverage --threshold 80
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: tests/build/coverage/
+          retention-days: 7
+
+  stm32-build:
+    name: STM32 Cross-Compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM toolchain
+        run: sudo apt-get install -y gcc-arm-none-eabi
+
+      - name: Build STM32 example
+        working-directory: examples/stm32f103
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_TOOLCHAIN_FILE=../../../cmake/arm-none-eabi-gcc.cmake ..
+          make -j$(nproc)
+
+  code-format:
+    name: Code Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get install -y clang-format-14
+
+      - name: Check C/C++ format
+        run: |
+          chmod +x tools/code_format.sh
+          tools/code_format.sh --check
+
+  converter-test:
+    name: MIDI Converter Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install mido
+        run: pip install mido
+
+      - name: Test converter
+        run: |
+          python scripts/midi_converter.py \
+            "resources/Pirates of the Caribbean - He's a Pirate.mid" \
+            /tmp/test_output.c
+          test -f /tmp/test_output.c
