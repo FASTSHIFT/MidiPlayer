@@ -16,8 +16,7 @@ extern "C" {
 
 #define BUZZER_PIN PA0
 
-static void buzzer_test(void)
-{
+static void buzzer_test(void) {
     Serial.println("Buzzer test on PA0...");
 
     Serial.println("  C5 (523Hz)");
@@ -47,8 +46,7 @@ static void buzzer_test(void)
     delay(500);
 }
 
-int main(void)
-{
+int main(void) {
     Core_Init();
     Serial.begin(115200);
 
@@ -57,8 +55,7 @@ int main(void)
     Serial.println("========================================");
     Serial.printf("Tracks: %d\r\n", midi_score.track_count);
     for (uint8_t i = 0; i < midi_score.track_count; i++) {
-        Serial.printf("  Track %d: %lu events\r\n", i,
-                      (unsigned long)midi_score.tracks[i].event_count);
+        Serial.printf("  Track %d: %lu events\r\n", i, (unsigned long)midi_score.tracks[i].event_count);
     }
 
     buzzer_test();
@@ -80,8 +77,7 @@ int main(void)
         uint32_t now = millis();
         if (now - last_print >= 2000) {
             last_print = now;
-            Serial.printf("[%lu ms] playing=%d\r\n",
-                          (unsigned long)now, mp_is_playing());
+            Serial.printf("[%lu ms] playing=%d\r\n", (unsigned long)now, mp_is_playing());
         }
 
         if (!mp_is_playing()) {
