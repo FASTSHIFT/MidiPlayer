@@ -6,6 +6,7 @@ on:
     paths:
       - "source/**"
       - "tests/**"
+      - "tools/**"
       - "examples/**"
       - "cmake/**"
       - "CMakeLists.txt"
@@ -15,7 +16,7 @@ on:
 
 jobs:
   unit-tests:
-    name: Unit Tests + Coverage
+    name: C Unit Tests + Coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +34,38 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
+          name: c-coverage-report
           path: tests/build/coverage/
           retention-days: 7
+
+  python-tests:
+    name: Python Tests + Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r tools/requirements-dev.txt
+
+      - name: Check Python format + lint
+        run: |
+          chmod +x tools/python_format.sh
+          tools/python_format.sh --check --lint
+
+      - name: Run Python tests
+        working-directory: tools
+        run: python -m pytest tests/ -v --cov=player --cov-report=term-missing
+
+      - name: Test MIDI converter
+        run: |
+          python tools/midi_to_header.py \
+            "resources/Pirates of the Caribbean - He's a Pirate.mid" \
+            /tmp/test_output.h
+          test -f /tmp/test_output.h
 
   stm32-build:
     name: STM32 Cross-Compile
@@ -54,7 +84,7 @@ jobs:
           make -j$(nproc)
 
   code-format:
-    name: Code Format Check
+    name: C Code Format Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,23 +96,3 @@ jobs:
         run: |
           chmod +x tools/code_format.sh
           tools/code_format.sh --check
-
-  converter-test:
-    name: MIDI Converter Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install mido
-        run: pip install mido
-
-      - name: Test converter
-        run: |
-          python scripts/midi_to_header.py \
-            "resources/Pirates of the Caribbean - He's a Pirate.mid" \
-            /tmp/test_output.h
-          test -f /tmp/test_output.h

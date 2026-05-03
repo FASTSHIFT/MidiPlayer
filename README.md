@@ -297,15 +297,21 @@ MidiPlayer/
 │   ├── mp_note_table.c/h   #   MIDI 音符 → 相位增量查找表
 │   ├── mp_player.c/h       #   公共 API
 │   ├── mp_port.c/h         #   平台回调接口
-├── tests/                  # 单元测试（Host 编译，52 个用例）
+├── tests/                  # C 单元测试（Host 编译，56 个用例）
 ├── examples/stm32f103/     # STM32F103 独立运行示例
-├── scripts/
-│   ├── midi_to_header.py   #   MIDI → C 头文件转换器
-│   └── midi_player.py      #   PC 端验证播放器
 ├── tools/
+│   ├── player/             #   PC MIDI 播放器（Python 包，与 MCU 算法一致）
+│   │   ├── oscillator.py   #     波形合成（方波/三角/锯齿/脉冲）
+│   │   ├── envelope.py     #     ADSR 包络（7 种预设）
+│   │   ├── mixer.py        #     4 通道混音
+│   │   ├── sequencer.py    #     MIDI 事件音序器
+│   │   └── instruments.py  #     GM 乐器映射
+│   ├── tests/              #   Python 单元测试（40 个用例）
+│   ├── midi_to_header.py   #   MIDI → C 头文件转换器
 │   ├── load_midi.sh        #   一键转换+编译+烧录
 │   ├── flash.sh            #   固件烧录（ST-Link / DAPLink）
-│   └── code_format.sh      #   代码格式化
+│   ├── code_format.sh      #   C 代码格式化
+│   └── python_format.sh    #   Python 格式化 + lint
 ├── cmake/
 │   ├── library.cmake       #   子仓库集成入口
 │   └── arm-none-eabi-gcc.cmake

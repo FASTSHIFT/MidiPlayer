@@ -23,7 +23,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 EXAMPLE_DIR="$PROJECT_ROOT/examples/stm32f103"
 BUILD_DIR="$EXAMPLE_DIR/build"
-CONVERTER="$PROJECT_ROOT/scripts/midi_to_header.py"
+CONVERTER="$PROJECT_ROOT/tools/midi_to_header.py"
 FLASH_SCRIPT="$SCRIPT_DIR/flash.sh"
 
 MAX_TRACKS=3
