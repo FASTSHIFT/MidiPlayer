@@ -2,6 +2,7 @@
 GM Instrument mapping — shared with tools/midi_to_header.py.
 
 Maps MIDI program numbers to (mod, adsr_preset, waveform).
+Maps MIDI percussion notes to ADSR presets for the noise channel.
 """
 
 from .oscillator import Waveform
@@ -11,6 +12,9 @@ from .envelope import AdsrPreset
 MOD_50 = 127
 MOD_25 = 64
 MOD_12 = 32
+
+# Noise channel index (last channel)
+NOISE_CH = 3
 
 
 def get_instrument_params(program):
@@ -52,3 +56,20 @@ def get_instrument_params(program):
         return (MOD_50, AdsrPreset.PIANO, Waveform.SQUARE)
     else:  # Sound Effects
         return (MOD_50, AdsrPreset.DEFAULT, Waveform.SQUARE)
+
+
+def get_percussion_adsr(note):
+    """
+    Map GM percussion note to ADSR preset for the noise channel.
+
+    All percussion uses the dedicated PERCUSSION preset (instant attack,
+    fast decay to zero, no sustain). This gives a short punchy hit
+    that doesn't linger like melodic presets.
+
+    Args:
+        note: MIDI note number (GM percussion map, 35~81)
+
+    Returns:
+        AdsrPreset.PERCUSSION for all percussion instruments
+    """
+    return AdsrPreset.PERCUSSION

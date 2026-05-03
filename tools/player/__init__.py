@@ -4,7 +4,7 @@ from .oscillator import Oscillator, Waveform
 from .envelope import Envelope, AdsrPreset
 from .mixer import Mixer
 from .sequencer import Sequencer
-from .instruments import get_instrument_params
+from .instruments import get_instrument_params, get_percussion_adsr
 
 __all__ = [
     "Oscillator",
@@ -14,4 +14,5 @@ __all__ = [
     "Mixer",
     "Sequencer",
     "get_instrument_params",
+    "get_percussion_adsr",
 ]

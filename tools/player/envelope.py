@@ -16,6 +16,7 @@ class AdsrPreset(IntEnum):
     BASS = 4
     LEAD = 5
     PAD = 6
+    PERCUSSION = 7
 
 
 # Preset parameters: (attack, decay, sustain, release) in ticks at 2kHz
@@ -28,6 +29,7 @@ ADSR_PRESETS = {
     AdsrPreset.BASS: (6, 400, 160, 200),
     AdsrPreset.LEAD: (8, 100, 220, 150),
     AdsrPreset.PAD: (400, 0, 255, 1000),
+    AdsrPreset.PERCUSSION: (1, 60, 0, 20),
 }
 
 

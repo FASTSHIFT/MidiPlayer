@@ -131,3 +131,56 @@ class TestConverterConsistency:
             assert (
                 int(pc_waveform) == conv_waveform
             ), f"program {program}: waveform mismatch {pc_waveform} vs {conv_waveform}"
+
+
+class TestPercussionMapping:
+    """Tests for percussion ADSR mapping."""
+
+    def test_returns_valid_preset(self):
+        from player.instruments import get_percussion_adsr
+
+        for note in range(27, 88):
+            adsr = get_percussion_adsr(note)
+            assert (
+                adsr in AdsrPreset.__members__.values()
+            ), f"note {note}: invalid adsr {adsr}"
+
+    def test_all_percussion_uses_percussion_preset(self):
+        from player.instruments import get_percussion_adsr
+
+        for note in range(27, 88):
+            assert get_percussion_adsr(note) == AdsrPreset.PERCUSSION
+
+    def test_percussion_preset_is_short(self):
+        """PERCUSSION preset should have very fast decay and no sustain."""
+        from player.envelope import ADSR_PRESETS
+
+        a, d, s, r = ADSR_PRESETS[AdsrPreset.PERCUSSION]
+        assert a <= 2, "attack should be near-instant"
+        assert d <= 100, "decay should be fast"
+        assert s == 0, "sustain should be zero"
+        assert r <= 40, "release should be very short"
+        # Total envelope < 50ms
+        total_ms = (a + d + r) * 0.5
+        assert total_ms <= 50
+
+    def test_converter_percussion_consistency(self):
+        """Verify player and converter percussion mappings match."""
+        from player.instruments import get_percussion_adsr
+        import importlib.util
+        import os
+
+        converter_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "midi_to_header.py",
+        )
+        spec = importlib.util.spec_from_file_location("converter", converter_path)
+        converter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(converter)
+
+        for note in range(27, 88):
+            pc_adsr = int(get_percussion_adsr(note))
+            conv_adsr = converter.get_percussion_adsr(note)
+            assert (
+                pc_adsr == conv_adsr
+            ), f"note {note}: adsr mismatch {pc_adsr} vs {conv_adsr}"

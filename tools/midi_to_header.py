@@ -32,6 +32,7 @@ ADSR_STRINGS = 3
 ADSR_BASS = 4
 ADSR_LEAD = 5
 ADSR_PAD = 6
+ADSR_PERCUSSION = 7
 
 # Duty cycle values (only meaningful for WAVE_SQUARE)
 MOD_50 = 127  # 50% - classic square wave
@@ -102,13 +103,27 @@ def midi_note_to_phase_inc(note):
     return round(freq * 65536 / SAMPLE_RATE)
 
 
+# Noise channel index (must match MP_OSC_NOISE_CH)
+NOISE_CH = 3
+
 # Maximum note duration in ms (12-bit field, max 4095)
 MAX_NOTE_DURATION_MS = 4095
 
 
+def get_percussion_adsr(note):
+    """Map GM percussion note to ADSR preset index for the noise channel."""
+    return ADSR_PERCUSSION
+
+
 def parse_midi(filename, max_tracks):
+    """Parse MIDI file into melodic tracks + one percussion track.
+
+    Melodic events (non-ch9) are collected per-track.
+    Percussion events (ch9) are merged into a single track for the noise channel.
+    """
     mid = mido.MidiFile(filename)
-    tracks = []
+    melodic_tracks = []
+    percussion_events = []
 
     for track in mid.tracks:
         events = []
@@ -130,9 +145,7 @@ def parse_midi(filename, max_tracks):
                 current_program = msg.program
                 continue
 
-            # Skip MIDI channel 9 (0-indexed) — General MIDI percussion
-            if hasattr(msg, "channel") and msg.channel == 9:
-                continue
+            is_percussion = hasattr(msg, "channel") and msg.channel == 9
 
             if msg.type == "note_on" and msg.velocity > 0:
                 note_on_times[msg.note] = (current_time, current_program)
@@ -144,39 +157,60 @@ def parse_midi(filename, max_tracks):
                     start_time, program = note_on_times[msg.note]
                     duration_ms = int((current_time - start_time) * 1000)
                     start_ms = int(start_time * 1000)
-                    phase_inc = midi_note_to_phase_inc(msg.note)
                     volume = min(note_on_velocities[msg.note], 127)
-                    mod, adsr, waveform = get_instrument_params(program)
 
-                    # Cap very long notes
-                    if duration_ms > MAX_NOTE_DURATION_MS:
-                        duration_ms = MAX_NOTE_DURATION_MS
-
-                    if phase_inc > 0 and duration_ms > 0:
-                        events.append(
-                            (
-                                start_ms,
-                                phase_inc,
-                                duration_ms,
-                                volume,
-                                mod,
-                                adsr,
-                                waveform,
+                    if is_percussion:
+                        adsr = get_percussion_adsr(msg.note)
+                        perc_vol = volume * 2 // 5  # 40% of original
+                        duration_ms = min(duration_ms, 100) if duration_ms > 0 else 30
+                        if duration_ms > 0 and perc_vol > 0:
+                            percussion_events.append(
+                                (
+                                    start_ms,
+                                    0,  # phase_inc = 0 for noise
+                                    duration_ms,
+                                    perc_vol,
+                                    0,  # mod (unused for noise)
+                                    adsr,
+                                    0,  # waveform (unused for noise)
+                                )
                             )
-                        )
+                    else:
+                        phase_inc = midi_note_to_phase_inc(msg.note)
+                        mod, adsr, waveform = get_instrument_params(program)
+
+                        if duration_ms > MAX_NOTE_DURATION_MS:
+                            duration_ms = MAX_NOTE_DURATION_MS
+
+                        if phase_inc > 0 and duration_ms > 0:
+                            events.append(
+                                (
+                                    start_ms,
+                                    phase_inc,
+                                    duration_ms,
+                                    volume,
+                                    mod,
+                                    adsr,
+                                    waveform,
+                                )
+                            )
 
                     del note_on_times[msg.note]
                     del note_on_velocities[msg.note]
 
         if events:
             events.sort(key=lambda e: e[0])
-            tracks.append(events)
+            melodic_tracks.append(events)
 
-    # Report percussion tracks that were skipped
+    if len(melodic_tracks) > max_tracks:
+        melodic_tracks.sort(key=lambda t: len(t), reverse=True)
+        melodic_tracks = melodic_tracks[:max_tracks]
 
-    if len(tracks) > max_tracks:
-        tracks.sort(key=lambda t: len(t), reverse=True)
-        tracks = tracks[:max_tracks]
+    # Append percussion as a separate track (assigned to NOISE_CH in assign_channels)
+    tracks = melodic_tracks
+    if percussion_events:
+        percussion_events.sort(key=lambda e: e[0])
+        tracks.append(percussion_events)
 
     return tracks
 
@@ -184,13 +218,38 @@ def parse_midi(filename, max_tracks):
 def assign_channels(tracks):
     """Assign oscillator channels to note events.
 
-    Only uses channels 0-2 (square/triangle/sawtooth).
-    Channel 3 (noise) is reserved and never assigned to melodic notes.
-    Multiple tracks share the 3 melodic channels via round-robin + spillover.
+    Melodic tracks use channels 0-2 via round-robin + spillover.
+    The last track may be percussion (phase_inc == 0), assigned to channel 3 (noise).
     """
     num_melodic_ch = 3  # channels 0, 1, 2 only
 
     for track_idx, events in enumerate(tracks):
+        # Detect percussion track: all events have phase_inc == 0
+        is_percussion = all(e[1] == 0 for e in events)
+
+        if is_percussion:
+            # Assign all percussion events to noise channel
+            for i, (
+                start_ms,
+                phase_inc,
+                duration_ms,
+                volume,
+                mod,
+                adsr,
+                waveform,
+            ) in enumerate(events):
+                events[i] = (
+                    start_ms,
+                    phase_inc,
+                    duration_ms,
+                    volume,
+                    NOISE_CH,
+                    mod,
+                    adsr,
+                    waveform,
+                )
+            continue
+
         base_ch = track_idx % num_melodic_ch
         active = {}  # channel -> off_time
 

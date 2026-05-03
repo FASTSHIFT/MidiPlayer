@@ -62,6 +62,7 @@ typedef enum {
     MP_ADSR_PRESET_BASS,        /* Fast attack, medium decay */
     MP_ADSR_PRESET_LEAD,        /* Fast attack, high sustain */
     MP_ADSR_PRESET_PAD,         /* Slow attack, slow release */
+    MP_ADSR_PRESET_PERCUSSION,  /* Instant attack, fast decay, no sustain */
     MP_ADSR_PRESET_COUNT,
 } mp_adsr_preset_t;
 

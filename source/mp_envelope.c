@@ -38,6 +38,8 @@ static const mp_adsr_params_t adsr_presets[MP_ADSR_PRESET_COUNT] = {
     [MP_ADSR_PRESET_LEAD]    = { .attack = 8,   .decay = 100,  .sustain = 220, .release = 150 },
     /* PAD:      slow attack, no decay, full sustain, very slow release */
     [MP_ADSR_PRESET_PAD]     = { .attack = 400, .decay = 0,    .sustain = 255, .release = 1000 },
+    /* PERCUSSION: instant attack, fast decay to zero, no sustain — for noise channel */
+    [MP_ADSR_PRESET_PERCUSSION] = { .attack = 1, .decay = 60, .sustain = 0, .release = 20 },
 };
 /* clang-format on */
 
