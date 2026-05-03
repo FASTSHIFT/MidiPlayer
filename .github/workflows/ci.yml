@@ -82,7 +82,7 @@ jobs:
 
       - name: Test converter
         run: |
-          python scripts/midi_converter.py \
+          python scripts/midi_to_header.py \
             "resources/Pirates of the Caribbean - He's a Pirate.mid" \
-            /tmp/test_output.c
-          test -f /tmp/test_output.c
+            /tmp/test_output.h
+          test -f /tmp/test_output.h
