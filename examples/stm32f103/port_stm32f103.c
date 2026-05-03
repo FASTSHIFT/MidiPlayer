@@ -21,8 +21,8 @@
  *   PSC = F_CPU / resolution / frequency - 1
  *   -> 72MHz / 1024 / 70312 ≈ 0 -> PSC=0, actual freq = 72MHz/1024 ≈ 70.3kHz
  */
-#define AUDIO_PWM_RESOLUTION (1 << MP_OSC_PWM_BITS) /* 1024 */
-#define AUDIO_PWM_FREQUENCY  (F_CPU / AUDIO_PWM_RESOLUTION) /* ~70.3kHz */
+#define AUDIO_PWM_RESOLUTION (1 << MP_OSC_PWM_BITS)        /* 1024 */
+#define AUDIO_PWM_FREQUENCY (F_CPU / AUDIO_PWM_RESOLUTION) /* ~70.3kHz */
 
 /* Sample rate timer */
 #define AUDIO_SR_TIM TIM3

@@ -73,6 +73,7 @@ if $INSTALL_SYSTEM; then
     sudo apt-get update -qq
     sudo apt-get install -y \
         python3-tk \
+        portaudio19-dev \
         clang-format-14 \
         lcov bc
     echo -e "   ${GREEN}System packages installed ✓${NC}"
