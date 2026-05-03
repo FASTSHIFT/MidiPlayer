@@ -9,7 +9,7 @@ import mido
 from .oscillator import Oscillator, NoiseChannel, midi_note_to_phase_inc
 from .envelope import Envelope
 from .mixer import Mixer, NUM_CHANNELS
-from .instruments import get_instrument_params, get_percussion_adsr, NOISE_CH
+from .instruments import get_instrument_params, get_percussion_adsr
 
 PRESCALER_DIV = 8  # Envelope tick every 8 samples (2kHz at 16kHz SR)
 MAX_NOTE_DURATION_MS = 4095
@@ -44,23 +44,23 @@ class NoteEvent:
 
 
 def parse_midi(filename, max_tracks=0):
-    """Parse MIDI file into list of NoteEvent lists (one per track).
+    """Parse MIDI file into list of NoteEvent lists grouped by MIDI channel.
 
-    Melodic events (non-ch9) are collected per-track and assigned to
-    oscillator channels 0~2.  Percussion events (ch9) are collected
-    into a single track assigned to the noise channel (ch3).
+    Events are grouped by MIDI channel (not by track), so Format 0 files
+    with multiple channels in one track are properly separated.
+    Percussion (ch9) is collected into a single noise-channel track.
     """
     mid = mido.MidiFile(filename)
-    melodic_tracks = []
-    percussion_events = []  # all ch9 events merged into one list
+    # Collect events per MIDI channel across all tracks
+    channel_events = {}  # midi_ch -> list of NoteEvent
+    percussion_events = []
+    channel_programs = {}  # midi_ch -> current program
 
     for track in mid.tracks:
-        events = []
         current_time = 0.0
         tempo = 500000
-        current_program = 0
-        note_on_times = {}
-        note_on_velocities = {}
+        note_on_times = {}  # (midi_ch, note) -> (time, program)
+        note_on_velocities = {}  # (midi_ch, note) -> velocity
 
         for msg in track:
             dt = mido.tick2second(msg.time, mid.ticks_per_beat, tempo)
@@ -70,48 +70,53 @@ def parse_midi(filename, max_tracks=0):
                 tempo = msg.tempo
                 continue
             if msg.type == "program_change":
-                current_program = msg.program
+                channel_programs[msg.channel] = msg.program
                 continue
 
-            is_percussion = hasattr(msg, "channel") and msg.channel == 9
+            if not hasattr(msg, "channel"):
+                continue
+
+            midi_ch = msg.channel
+            is_percussion = midi_ch == 9
 
             if msg.type == "note_on" and msg.velocity > 0:
-                note_on_times[msg.note] = (current_time, current_program)
-                note_on_velocities[msg.note] = msg.velocity
+                program = channel_programs.get(midi_ch, 0)
+                note_on_times[(midi_ch, msg.note)] = (current_time, program)
+                note_on_velocities[(midi_ch, msg.note)] = msg.velocity
             elif msg.type == "note_off" or (
                 msg.type == "note_on" and msg.velocity == 0
             ):
-                if msg.note in note_on_times:
-                    start_time, program = note_on_times[msg.note]
+                key = (midi_ch, msg.note)
+                if key in note_on_times:
+                    start_time, program = note_on_times[key]
                     dur_ms = int((current_time - start_time) * 1000)
                     start_ms = int(start_time * 1000)
-                    volume = min(note_on_velocities[msg.note], 127)
+                    volume = min(note_on_velocities[key], 127)
 
                     if is_percussion:
-                        # Percussion -> noise channel
-                        # Scale volume down so noise sits behind melodic channels
                         adsr = get_percussion_adsr(msg.note)
-                        perc_vol = volume * 2 // 5  # 40% of original
+                        perc_vol = volume * 2 // 5
                         dur_ms = min(dur_ms, 100) if dur_ms > 0 else 30
                         if dur_ms > 0 and perc_vol > 0:
                             percussion_events.append(
                                 NoteEvent(
                                     start_ms,
                                     dur_ms,
-                                    0,  # noise has no phase_inc
+                                    0,
                                     perc_vol,
-                                    NOISE_CH,
+                                    0,
                                     0,
                                     adsr,
                                     0,
                                 )
                             )
                     else:
-                        # Melodic -> oscillator channels
                         phase_inc = midi_note_to_phase_inc(msg.note)
                         mod, adsr, waveform = get_instrument_params(program)
                         if phase_inc > 0 and dur_ms > 0:
-                            events.append(
+                            if midi_ch not in channel_events:
+                                channel_events[midi_ch] = []
+                            channel_events[midi_ch].append(
                                 NoteEvent(
                                     start_ms,
                                     dur_ms,
@@ -124,12 +129,15 @@ def parse_midi(filename, max_tracks=0):
                                 )
                             )
 
-                    del note_on_times[msg.note]
-                    del note_on_velocities[msg.note]
+                    del note_on_times[key]
+                    del note_on_velocities[key]
 
-        if events:
-            events.sort(key=lambda e: e.start_ms)
-            melodic_tracks.append(events)
+    # Convert to sorted list of tracks (one per MIDI channel)
+    melodic_tracks = []
+    for midi_ch in sorted(channel_events.keys()):
+        events = channel_events[midi_ch]
+        events.sort(key=lambda e: e.start_ms)
+        melodic_tracks.append(events)
 
     # Keep melodic tracks with most notes (0 or negative = keep all)
     if max_tracks > 0 and len(melodic_tracks) > max_tracks:

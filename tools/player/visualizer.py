@@ -1,14 +1,19 @@
 """
-Waveform Visualizer — real-time matplotlib display with playback controls.
+Waveform Visualizer — single-axes stacked layout with pure blit.
 
-Features:
-- 5 waveform subplots (CH0~CH2 + NOISE + MIX)
-- Rectangle-based volume bars and ADSR stage indicators
-- Draggable Slider progress bar with seek
-- Pause/Resume and speed control buttons + keyboard shortcuts
+All waveforms, volume bars, ADSR indicators, and progress bar are drawn
+in one Axes as animated artists. No matplotlib widgets (Slider/Button)
+to avoid blit conflicts. Controls via keyboard shortcuts only.
+
+Keyboard:
+  Space     Pause / Resume
+  Left/Right  Seek ±5s
+  [ / ]     Speed down / up
+  R         Reset to start
 """
 
 import sys
+import time as _time
 import numpy as np
 import threading
 import matplotlib
@@ -30,10 +35,37 @@ if not _backend_ok:
 # Display constants
 WAVEFORM_SYMBOLS = ["SQR", "TRI", "SAW", "PLS"]
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-ADSR_STAGE_NAMES = ["Atk", "Dec", "Sus", "Rel"]  # full-ish names for the 4 rects
-ADSR_ACTIVE_COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#F44336"]  # A D S R
+ADSR_STAGE_NAMES = ["Atk", "Dec", "Sus", "Rel"]
+ADSR_ACTIVE_COLORS = ["#2196F3", "#FF9800", "#4CAF50", "#F44336"]
 ADSR_INACTIVE = "#2a2a4a"
 SPEED_OPTIONS = [0.5, 1.0, 1.5, 2.0]
+CHANNEL_SPACING = 300
+
+_PRESET_COLORS = [
+    "#00d2ff",
+    "#ff6b6b",
+    "#ffd93d",
+    "#6bcb77",
+    "#ff9a3c",
+    "#a78bfa",
+    "#f472b6",
+    "#b388ff",
+]
+_MIX_COLOR = "#e94560"
+
+
+def _make_colors(num_channels):
+    """Generate channel colors: preset for <=8, colormap for more."""
+    if num_channels <= len(_PRESET_COLORS):
+        return _PRESET_COLORS[:num_channels] + [_MIX_COLOR]
+    import matplotlib as mpl
+
+    cmap = mpl.colormaps.get_cmap("tab20").resampled(num_channels)
+    colors = [
+        "#{:02x}{:02x}{:02x}".format(int(c[0] * 255), int(c[1] * 255), int(c[2] * 255))
+        for c in [cmap(i) for i in range(num_channels)]
+    ]
+    return colors + [_MIX_COLOR]
 
 
 def phase_inc_to_note_name(phase_inc):
@@ -55,16 +87,16 @@ def phase_inc_to_note_name(phase_inc):
 
 
 class Visualizer:
-    """Real-time waveform visualization with playback controls."""
+    """Real-time waveform visualization — pure blit, keyboard controls."""
 
     def __init__(self, sequencer):
         self.seq = sequencer
         self.num_channels = sequencer.num_channels
         self.num_melodic = sequencer.num_melodic
-        self.num_plots = self.num_channels + 1  # channels + MIX
+        self.num_plots = self.num_channels + 1
         self.display_samples = 512
         self.running = False
-        self._seeking = False  # True while user drags slider
+        self._seeking = False
 
         self._ch_buffers = [
             np.zeros(self.display_samples, dtype=np.int16)
@@ -98,315 +130,306 @@ class Visualizer:
             return
 
         import matplotlib.pyplot as plt
-        import matplotlib.animation as animation
-        from matplotlib.widgets import Slider, Button
         from matplotlib.patches import Rectangle
 
-        self.running = False
         seq = self.seq
+        sp = CHANNEL_SPACING
+        ns = self.display_samples
+        n_total = self.num_plots
+        colors = _make_colors(self.num_channels)
 
-        # --- Layout ---
-        fig = plt.figure(figsize=(12, 2.0 * self.num_plots + 1.2), facecolor="#1a1a2e")
-        fig.suptitle("MidiPlayer Visualizer", color="white", fontsize=14, y=0.98)
+        # --- Figure + single Axes ---
+        fig_h = max(6, min(1.2 * n_total + 1.0, 16))
+        fig = plt.figure(figsize=(13, fig_h), facecolor="#1a1a2e")
+        ax = fig.add_axes([0.06, 0.06, 0.92, 0.92], facecolor="#16213e")
 
-        # GridSpec: waveform rows + control row at bottom
-        gs = fig.add_gridspec(
-            self.num_plots + 1,
-            1,
-            height_ratios=[1] * self.num_plots + [0.15],
-            hspace=0.35,
-            top=0.95,
-            bottom=0.02,
-            left=0.07,
-            right=0.98,
+        # Layout dimensions
+        vol_x = ns + 8
+        vol_w_max = 25
+        vol_h = sp * 0.22
+        adsr_x = vol_x + vol_w_max + 5
+        adsr_w = 10
+        adsr_gap = 2
+        x_max = adsr_x + 4 * (adsr_w + adsr_gap) + 10
+        prog_y = -sp * 0.6
+        prog_h = sp * 0.12
+        y_min = prog_y - sp * 0.3
+        y_max = n_total * sp + sp * 0.5
+
+        ax.set_xlim(0, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.set_yticks([])
+        ax.tick_params(axis="x", colors="gray", labelsize=7)
+        for spine in ax.spines.values():
+            spine.set_color("#333")
+
+        x = np.arange(ns)
+
+        # --- Static elements ---
+        for i in range(n_total):
+            yc = i * sp
+            if i > 0:
+                ax.axhline(y=yc - sp // 2, color="#333", lw=0.5, ls="--")
+            is_mix = i == n_total - 1
+            is_noise = i == self.num_melodic
+            lbl = "MIX" if is_mix else ("NOISE" if is_noise else f"CH{i}")
+            clr = _MIX_COLOR if is_mix else colors[i]
+            ax.text(
+                -5,
+                yc,
+                lbl,
+                ha="right",
+                va="center",
+                fontsize=8,
+                color=clr,
+                fontfamily="monospace",
+                clip_on=False,
+            )
+
+        ax.axhline(y=(n_total - 1) * sp, color="#444", lw=0.3, ls=":")
+
+        # Help text
+        ax.text(
+            x_max - 2,
+            y_max - 10,
+            "Space:pause  []:speed  R:reset  Left/Right:seek",
+            ha="right",
+            va="top",
+            fontsize=6,
+            color="#555",
+            fontfamily="monospace",
         )
 
-        axes = [fig.add_subplot(gs[i]) for i in range(self.num_plots)]
-        ax_ctrl = fig.add_subplot(gs[self.num_plots])
-        ax_ctrl.set_visible(False)  # just a spacer
-
+        # --- Animated artists ---
         lines = []
         info_texts = []
-        vol_bars = []  # Rectangle patches for volume
-        adsr_rects = []  # list of 4 Rectangles per channel
-        x = np.arange(self.display_samples)
+        vol_rects = []
+        adsr_rects_all = []
+        all_artists = []
 
-        # Colors: auto-generate from colormap, hand-picked for small counts
-        _PRESET_COLORS = [
-            "#00d2ff",
-            "#ff6b6b",
-            "#ffd93d",
-            "#6bcb77",
-            "#ff9a3c",
-            "#a78bfa",
-            "#f472b6",
-            "#b388ff",
-        ]
-        _MIX_COLOR = "#e94560"
-        if self.num_channels <= len(_PRESET_COLORS):
-            ch_colors = _PRESET_COLORS[: self.num_channels] + [_MIX_COLOR]
-        else:
-            import matplotlib.cm as cm
+        for i in range(n_total):
+            yc = i * sp
+            is_mix = i == n_total - 1
+            c = _MIX_COLOR if is_mix else colors[i]
 
-            cmap = cm.get_cmap("tab20", self.num_channels)
-            ch_colors = [
-                "#{:02x}{:02x}{:02x}".format(
-                    int(c[0] * 255), int(c[1] * 255), int(c[2] * 255)
-                )
-                for c in [cmap(i) for i in range(self.num_channels)]
-            ] + [_MIX_COLOR]
-
-        for i, ax in enumerate(axes):
-            ax.set_facecolor("#16213e")
-            ax.tick_params(colors="gray", labelsize=7)
-            for spine in ax.spines.values():
-                spine.set_color("#333")
-
-            is_mix = i == self.num_plots - 1
-
-            if is_mix:
-                ax.set_ylim(0, 1023)
-                ax.axhline(y=512, color="#333", linewidth=0.5, linestyle="--")
-                ax.set_ylabel("MIX", color=ch_colors[-1], fontsize=10)
-                (line,) = ax.plot(
-                    x,
-                    np.full(self.display_samples, 512),
-                    color=ch_colors[-1],
-                    linewidth=0.8,
-                )
-            else:
-                ax.set_ylim(-140, 140)
-                label = f"CH{i}" if i < self.num_melodic else "NOISE"
-                ax.set_ylabel(label, color=ch_colors[i], fontsize=10)
-                (line,) = ax.plot(
-                    x,
-                    np.zeros(self.display_samples),
-                    color=ch_colors[i],
-                    linewidth=0.8,
-                )
-
-            ax.set_xlim(0, self.display_samples)
+            init_y = np.full(ns, float(yc))
+            (line,) = ax.plot(x, init_y, color=c, lw=0.8, animated=True)
             lines.append(line)
+            all_artists.append(line)
 
-            # Info text (note + waveform for melodic, LFSR for noise)
-            info = ax.text(
-                0.01,
-                0.92,
+            txt = ax.text(
+                5,
+                yc + sp * 0.35,
                 "",
-                transform=ax.transAxes,
-                ha="left",
-                va="top",
+                fontsize=7,
                 color="white",
-                fontsize=9,
                 fontfamily="monospace",
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="#0f3460", alpha=0.85),
+                va="center",
+                animated=True,
+                bbox=dict(boxstyle="round,pad=0.15", facecolor="#0f3460", alpha=0.8),
             )
-            info_texts.append(info)
+            info_texts.append(txt)
+            all_artists.append(txt)
 
             if not is_mix:
-                # Volume bar — inset axes in top-right
-                ax_vol = ax.inset_axes([0.88, 0.75, 0.10, 0.15])
-                ax_vol.set_xlim(0, 127)
-                ax_vol.set_ylim(0, 1)
-                ax_vol.axis("off")
-                bg = Rectangle((0, 0), 127, 1, facecolor=ADSR_INACTIVE, linewidth=0)
-                ax_vol.add_patch(bg)
-                vbar = Rectangle((0, 0), 0, 1, facecolor=ch_colors[i], linewidth=0)
-                ax_vol.add_patch(vbar)
-                vol_bars.append(vbar)
+                bg = Rectangle(
+                    (vol_x, yc - vol_h / 2),
+                    vol_w_max,
+                    vol_h,
+                    facecolor=ADSR_INACTIVE,
+                    lw=0,
+                    animated=True,
+                )
+                ax.add_patch(bg)
+                vbar = Rectangle(
+                    (vol_x, yc - vol_h / 2),
+                    0,
+                    vol_h,
+                    facecolor=c,
+                    lw=0,
+                    animated=True,
+                )
+                ax.add_patch(vbar)
+                vol_rects.append((bg, vbar))
+                all_artists.extend([bg, vbar])
 
-                # ADSR stage indicator — 4 small rects
-                ax_adsr = ax.inset_axes([0.72, 0.75, 0.14, 0.15])
-                ax_adsr.set_xlim(0, 4)
-                ax_adsr.set_ylim(0, 1)
-                ax_adsr.axis("off")
                 ch_adsr = []
+                adsr_h = sp * 0.18
                 for j in range(4):
+                    rx = adsr_x + j * (adsr_w + adsr_gap)
                     r = Rectangle(
-                        (j * 1.0 + 0.05, 0.1),
-                        0.9,
-                        0.8,
+                        (rx, yc - adsr_h / 2),
+                        adsr_w,
+                        adsr_h,
                         facecolor=ADSR_INACTIVE,
-                        linewidth=0,
+                        lw=0,
+                        animated=True,
                     )
-                    ax_adsr.add_patch(r)
-                    ax_adsr.text(
-                        j * 1.0 + 0.5,
-                        0.5,
+                    ax.add_patch(r)
+                    ch_adsr.append(r)
+                    all_artists.append(r)
+                    ax.text(
+                        rx + adsr_w / 2,
+                        yc - adsr_h / 2 - 6,
                         ADSR_STAGE_NAMES[j],
                         ha="center",
-                        va="center",
-                        fontsize=6,
-                        color="#666",
+                        va="top",
+                        fontsize=5,
+                        color="#555",
                         fontfamily="monospace",
                     )
-                    ch_adsr.append(r)
-                adsr_rects.append(ch_adsr)
+                adsr_rects_all.append(ch_adsr)
             else:
-                vol_bars.append(None)
-                adsr_rects.append(None)
+                vol_rects.append(None)
+                adsr_rects_all.append(None)
 
-        # --- Controls ---
-        # Slider
-        ax_slider = fig.add_axes([0.18, 0.025, 0.52, 0.018], facecolor="#16213e")
-        slider = Slider(
-            ax_slider,
-            "",
+        # Progress bar (Rectangle in main axes)
+        prog_bg = Rectangle(
+            (0, prog_y),
+            ns,
+            prog_h,
+            facecolor="#2a2a4a",
+            lw=0,
+            animated=True,
+        )
+        ax.add_patch(prog_bg)
+        prog_fg = Rectangle(
+            (0, prog_y),
             0,
-            100,
-            valinit=0,
-            color="#e94560",
-            track_color="#2a2a4a",
+            prog_h,
+            facecolor="#e94560",
+            lw=0,
+            animated=True,
         )
-        slider.valtext.set_visible(False)
+        ax.add_patch(prog_fg)
+        all_artists.extend([prog_bg, prog_fg])
 
-        # Time text
-        time_text = fig.text(
-            0.72,
-            0.033,
-            "0:00 / 0:00",
+        # Status text (time + speed + fps)
+        status_txt = ax.text(
+            ns / 2,
+            prog_y - 12,
+            "",
+            ha="center",
+            va="top",
+            fontsize=8,
             color="white",
-            fontsize=10,
             fontfamily="monospace",
-            va="center",
+            animated=True,
         )
+        all_artists.append(status_txt)
 
-        # Pause button
-        ax_pause = fig.add_axes([0.05, 0.015, 0.05, 0.03])
-        btn_pause = Button(ax_pause, ">", color="#16213e", hovercolor="#2a2a4a")
-        btn_pause.label.set_color("white")
-        btn_pause.label.set_fontsize(12)
-
-        # Speed button
-        ax_speed = fig.add_axes([0.12, 0.015, 0.05, 0.03])
-        btn_speed = Button(ax_speed, "1.0x", color="#16213e", hovercolor="#2a2a4a")
-        btn_speed.label.set_color("white")
-        btn_speed.label.set_fontsize(9)
-
-        # Speed index tracker
-        speed_state = {"idx": SPEED_OPTIONS.index(1.0)}
-
-        # --- Callbacks ---
-        def on_pause_click(_event):
-            seq.toggle_pause()
-            btn_pause.label.set_text(">" if seq.paused else "||")
-            fig.canvas.draw_idle()
-
-        def on_speed_click(_event):
-            speed_state["idx"] = (speed_state["idx"] + 1) % len(SPEED_OPTIONS)
-            seq.speed = SPEED_OPTIONS[speed_state["idx"]]
-            btn_speed.label.set_text(f"{seq.speed:.1f}x")
-            fig.canvas.draw_idle()
-
-        def on_slider_changed(val):
-            if self._seeking:
-                target_ms = int(val * seq.total_ms / 100)
-                seq.seek(target_ms)
-
-        def on_slider_press(_event):
-            self._seeking = True
-
-        def on_slider_release(_event):
-            self._seeking = False
-
+        # --- Keyboard callbacks ---
         def on_key(event):
             if event.key == " ":
-                on_pause_click(None)
+                seq.toggle_pause()
             elif event.key == "right":
                 seq.seek(seq.elapsed_ms + 5000)
             elif event.key == "left":
                 seq.seek(max(0, seq.elapsed_ms - 5000))
             elif event.key == "]":
                 seq.speed = min(seq.speed + 0.5, 4.0)
-                btn_speed.label.set_text(f"{seq.speed:.1f}x")
             elif event.key == "[":
                 seq.speed = max(seq.speed - 0.5, 0.25)
-                btn_speed.label.set_text(f"{seq.speed:.1f}x")
             elif event.key == "r":
                 seq.seek(0)
 
-        btn_pause.on_clicked(on_pause_click)
-        btn_speed.on_clicked(on_speed_click)
-        slider.on_changed(on_slider_changed)
-        ax_slider.figure.canvas.mpl_connect(
-            "button_press_event",
-            lambda e: on_slider_press(e) if e.inaxes == ax_slider else None,
-        )
-        ax_slider.figure.canvas.mpl_connect(
-            "button_release_event",
-            lambda e: on_slider_release(e) if self._seeking else None,
-        )
         fig.canvas.mpl_connect("key_press_event", on_key)
 
-        mix_idx = self.num_plots - 1
+        # --- Initial draw + capture FULL figure background ---
+        fig.canvas.draw()
+        bg_cache = fig.canvas.copy_from_bbox(fig.bbox)
 
-        # --- Animation ---
-        def animate(_frame):
+        mix_idx = n_total - 1
+        fps_state = {"last": _time.time(), "count": 0, "fps": 0.0}
+
+        # Recapture background on resize
+        def on_resize(_event):
+            nonlocal bg_cache
+            fig.canvas.draw()
+            bg_cache = fig.canvas.copy_from_bbox(fig.bbox)
+
+        fig.canvas.mpl_connect("resize_event", on_resize)
+
+        # --- Timer-driven animation (no FuncAnimation, no draw_idle) ---
+        def animate():
+            fig.canvas.restore_region(bg_cache)
+
             with self._lock:
-                # Melodic channels
                 for i in range(self.num_melodic):
-                    lines[i].set_ydata(self._ch_buffers[i])
+                    yoff = i * sp
+                    lines[i].set_ydata(self._ch_buffers[i].astype(np.float64) + yoff)
                     osc = seq.oscillators[i]
                     env = seq.envelopes[i]
                     note = phase_inc_to_note_name(int(osc.phase_inc))
                     wf_idx = int(osc.waveform)
-                    wf = (
-                        WAVEFORM_SYMBOLS[wf_idx]
-                        if wf_idx < len(WAVEFORM_SYMBOLS)
-                        else "?"
-                    )
-                    info_texts[i].set_text(f"{note}  {wf}")
-
-                    # Volume bar
-                    vol_bars[i].set_width(env.level)
-
-                    # ADSR rects
+                    wf = WAVEFORM_SYMBOLS[wf_idx] if wf_idx < 4 else "?"
+                    info_texts[i].set_text(f"{note} {wf}")
+                    _, vbar = vol_rects[i]
+                    vbar.set_width(env.level * vol_w_max / 127)
                     stage = int(env.stage)
                     for j in range(4):
-                        if stage > 0 and j == stage - 1:
-                            adsr_rects[i][j].set_facecolor(ADSR_ACTIVE_COLORS[j])
-                        else:
-                            adsr_rects[i][j].set_facecolor(ADSR_INACTIVE)
+                        c = (
+                            ADSR_ACTIVE_COLORS[j]
+                            if (stage > 0 and j == stage - 1)
+                            else ADSR_INACTIVE
+                        )
+                        adsr_rects_all[i][j].set_facecolor(c)
 
-                # Noise channel
                 ni = self.num_melodic
-                lines[ni].set_ydata(self._ch_buffers[ni])
+                lines[ni].set_ydata(self._ch_buffers[ni].astype(np.float64) + ni * sp)
                 noise_env = seq.envelopes[ni]
-                info_texts[ni].set_text("LFSR Noise")
-                vol_bars[ni].set_width(noise_env.level)
-                noise_stage = int(noise_env.stage)
+                info_texts[ni].set_text("LFSR")
+                _, nvbar = vol_rects[ni]
+                nvbar.set_width(noise_env.level * vol_w_max / 127)
+                ns_ = int(noise_env.stage)
                 for j in range(4):
-                    if noise_stage > 0 and j == noise_stage - 1:
-                        adsr_rects[ni][j].set_facecolor(ADSR_ACTIVE_COLORS[j])
-                    else:
-                        adsr_rects[ni][j].set_facecolor(ADSR_INACTIVE)
+                    c = (
+                        ADSR_ACTIVE_COLORS[j]
+                        if (ns_ > 0 and j == ns_ - 1)
+                        else ADSR_INACTIVE
+                    )
+                    adsr_rects_all[ni][j].set_facecolor(c)
 
-                # MIX
-                lines[mix_idx].set_ydata(self._mix_buffer)
+                mix_yoff = mix_idx * sp
+                lines[mix_idx].set_ydata(
+                    (self._mix_buffer.astype(np.float64) - 512) + mix_yoff
+                )
                 pct = seq.progress_pct
                 info_texts[mix_idx].set_text(f"{pct}%")
 
-                # Slider + time (don't update slider while user is dragging)
-                if not self._seeking:
-                    slider.set_val(pct)
+                prog_fg.set_width(pct * ns / 100)
 
-                elapsed = seq.elapsed_ms
-                total = seq.total_ms
-                e_min, e_sec = elapsed // 60000, (elapsed % 60000) // 1000
-                t_min, t_sec = total // 60000, (total % 60000) // 1000
-                time_text.set_text(f"{e_min}:{e_sec:02d} / {t_min}:{t_sec:02d}")
+            # Status line
+            elapsed = seq.elapsed_ms
+            total = seq.total_ms
+            e_min, e_sec = elapsed // 60000, (elapsed % 60000) // 1000
+            t_min, t_sec = total // 60000, (total % 60000) // 1000
+            paused = " PAUSED" if seq.paused else ""
+            spd = f" {seq.speed:.1f}x" if seq.speed != 1.0 else ""
+            status_txt.set_text(
+                f"{e_min}:{e_sec:02d} / {t_min}:{t_sec:02d}"
+                f"{spd}{paused}  {fps_state['fps']:.0f}fps"
+            )
 
-                # Pause button icon
-                btn_pause.label.set_text(">" if seq.paused else "||")
+            for artist in all_artists:
+                ax.draw_artist(artist)
+            fig.canvas.blit(fig.bbox)
+            fig.canvas.flush_events()
 
-        _anim = animation.FuncAnimation(  # noqa: F841
-            fig,
-            animate,
-            interval=update_interval_ms,
-            blit=False,
-            cache_frame_data=False,
-        )
+            # FPS
+            fps_state["count"] += 1
+            now = _time.time()
+            dt = now - fps_state["last"]
+            if dt >= 1.0:
+                fps_state["fps"] = fps_state["count"] / dt
+                fps_state["count"] = 0
+                fps_state["last"] = now
+
+        timer = fig.canvas.new_timer(interval=update_interval_ms)
+        timer.add_callback(animate)
+        timer.start()
 
         self.running = True
         plt.show()
+        timer.stop()
         self.running = False

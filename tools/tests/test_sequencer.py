@@ -360,3 +360,92 @@ class TestSpeed:
         seq.speed = 2.0
         seq.load([make_events()])
         assert seq.speed == 1.0
+
+
+class TestFormat0MultiChannel:
+    """Tests for Format 0 MIDI files with multiple channels in one track."""
+
+    def test_format0_splits_by_midi_channel(self):
+        """Format 0 files should produce one melodic track per MIDI channel."""
+        import os
+
+        # Baby.mid is Format 0 with ~10 MIDI channels in one track
+        midi_path = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+            "Baby.mid",
+        )
+        if not os.path.exists(midi_path):
+            return
+
+        from player.sequencer import Sequencer
+
+        seq = Sequencer()
+        seq.load_midi(midi_path)
+        # Baby has ~10 MIDI channels, should have more than 1 melodic
+        assert (
+            seq.num_melodic > 1
+        ), f"Format 0 file should have multiple melodic channels, got {seq.num_melodic}"
+
+    def test_format1_still_works(self):
+        """Format 1 files should still work correctly."""
+        import os
+
+        # Pirates is Format 1 with 2 melodic tracks
+        midi_path = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+            "Pirates of the Caribbean - He's a Pirate.mid",
+        )
+        if not os.path.exists(midi_path):
+            return
+
+        from player.sequencer import Sequencer
+
+        seq = Sequencer()
+        seq.load_midi(midi_path)
+        assert seq.num_melodic == 2
+
+    def test_all_midi_files_have_multiple_channels(self):
+        """All MIDI files with multiple MIDI channels should get multiple tracks."""
+        import os
+        import mido
+
+        resources = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+        )
+        if not os.path.isdir(resources):
+            return
+
+        from player.sequencer import Sequencer
+
+        for fname in sorted(os.listdir(resources)):
+            if not fname.endswith(".mid"):
+                continue
+            path = os.path.join(resources, fname)
+            mid = mido.MidiFile(path)
+
+            # Count unique melodic MIDI channels
+            melodic_chs = set()
+            for track in mid.tracks:
+                for msg in track:
+                    if hasattr(msg, "channel") and msg.channel != 9:
+                        if msg.type == "note_on" and msg.velocity > 0:
+                            melodic_chs.add(msg.channel)
+
+            if len(melodic_chs) <= 1:
+                continue
+
+            seq = Sequencer()
+            seq.load_midi(path)
+            assert seq.num_melodic >= 2, (
+                f"{fname}: has {len(melodic_chs)} MIDI channels "
+                f"but only {seq.num_melodic} melodic tracks"
+            )
