@@ -12,8 +12,9 @@
 - **MIDI 乐器映射**：根据 General MIDI Program Number 自动选择波形 + 占空比 + ADSR
 - **紧凑数据格式**：每个音符事件仅 8 字节（位域压缩），比朴素结构体节省 50%
 - **回调式平台抽象**：通过 `mp_port_init()` 注册回调函数，无链接耦合，支持动态切换
-- **单元测试**：52 个测试用例，支持 Host 编译 + ASan + lcov 覆盖率
-- **GitHub CI**：单元测试、STM32 交叉编译、代码格式检查、MIDI 转换验证
+- **PC MIDI 播放器**：Python 实现，与 MCU 完全相同的合成算法，支持实时播放、WAV 导出、波形可视化
+- **单元测试**：C 68 个 + Python 65 个测试用例，Host 编译 + ASan + lcov 覆盖率
+- **GitHub CI**：C 单元测试、Python 测试 + lint、STM32 交叉编译、代码格式检查、MIDI 转换验证
 
 ## 架构
 
@@ -145,8 +146,8 @@ Word1 [31:0]:  phase_inc(15) | volume(7) | channel(2) | mod_idx(3) | adsr(3) | w
 ### 环境准备
 
 ```bash
-# Python 依赖（MIDI 转换）
-pip install mido
+# Python 依赖（MIDI 转换 + PC 播放器）
+pip install mido numpy pyaudio matplotlib
 
 # ARM 工具链（STM32 编译）
 sudo apt install gcc-arm-none-eabi
@@ -154,9 +155,12 @@ sudo apt install gcc-arm-none-eabi
 # 烧录工具（二选一）
 sudo apt install stlink-tools    # ST-Link
 sudo apt install openocd         # DAPLink
+
+# 可视化依赖（--vis 需要 tkinter）
+sudo apt install python3-tk
 ```
 
-### 一键播放 MIDI
+### 一键播放 MIDI（烧录到 STM32）
 
 ```bash
 # 转换 + 编译 + 烧录，一条命令
@@ -169,14 +173,43 @@ tools/load_midi.sh your_song.mid -t 5 -p stlink
 tools/load_midi.sh your_song.mid -n
 ```
 
+### PC 播放器
+
+使用与 MCU 完全相同的合成算法在 PC 上播放 MIDI 文件：
+
+```bash
+# 播放（默认使用所有音轨）
+python3 -m player song.mid
+
+# 限制最多 3 个音轨
+python3 -m player song.mid -t 3
+
+# 播放 + 实时波形可视化
+python3 -m player song.mid --vis
+
+# 导出 WAV 文件（离线渲染，不需要 pyaudio）
+python3 -m player song.mid -o output.wav
+
+# 静音模式 + 可视化（仅看波形）
+python3 -m player song.mid --vis --mute
+```
+
+> 注意：PC 播放器需要在 `tools/` 目录下运行，或使用 `python3 -m tools.player` 从项目根目录运行。
+
 ### 运行单元测试
 
 ```bash
-# 编译并运行
+# C 单元测试
 cd tests && ./run_tests.sh
 
 # 带覆盖率报告
 ./run_tests.sh coverage --threshold 80
+
+# Python 单元测试
+cd tools && python3 -m pytest tests/ -v
+
+# Python 测试 + 覆盖率
+cd tools && python3 -m pytest tests/ -v --cov=player --cov-report=term-missing
 ```
 
 ### STM32 手动编译
@@ -296,22 +329,33 @@ MidiPlayer/
 │   ├── mp_sequencer.c/h    #   事件驱动音序器（8 字节压缩格式）
 │   ├── mp_note_table.c/h   #   MIDI 音符 → 相位增量查找表
 │   ├── mp_player.c/h       #   公共 API
-│   ├── mp_port.c/h         #   平台回调接口
-├── tests/                  # C 单元测试（Host 编译，56 个用例）
+│   └── mp_port.c/h         #   平台回调接口
+├── tests/                  # C 单元测试（Host 编译，68 个用例）
 ├── examples/stm32f103/     # STM32F103 独立运行示例
 ├── tools/
 │   ├── player/             #   PC MIDI 播放器（Python 包，与 MCU 算法一致）
+│   │   ├── __main__.py     #     CLI 入口
 │   │   ├── oscillator.py   #     波形合成（方波/三角/锯齿/脉冲）
 │   │   ├── envelope.py     #     ADSR 包络（7 种预设）
 │   │   ├── mixer.py        #     4 通道混音
 │   │   ├── sequencer.py    #     MIDI 事件音序器
-│   │   └── instruments.py  #     GM 乐器映射
-│   ├── tests/              #   Python 单元测试（40 个用例）
+│   │   ├── instruments.py  #     GM 乐器映射
+│   │   └── visualizer.py   #     matplotlib 实时波形可视化
+│   ├── tests/              #   Python 单元测试（65 个用例）
+│   │   ├── test_oscillator.py
+│   │   ├── test_envelope.py
+│   │   ├── test_mixer.py
+│   │   ├── test_sequencer.py
+│   │   ├── test_instruments.py
+│   │   ├── test_visualizer.py
+│   │   └── run_tests.py    #     pytest 入口 + 覆盖率
 │   ├── midi_to_header.py   #   MIDI → C 头文件转换器
 │   ├── load_midi.sh        #   一键转换+编译+烧录
 │   ├── flash.sh            #   固件烧录（ST-Link / DAPLink）
 │   ├── code_format.sh      #   C 代码格式化
-│   └── python_format.sh    #   Python 格式化 + lint
+│   ├── python_format.sh    #   Python 格式化 + lint
+│   ├── requirements.txt    #   Python 运行依赖
+│   └── requirements-dev.txt #  Python 开发/CI 依赖
 ├── cmake/
 │   ├── library.cmake       #   子仓库集成入口
 │   └── arm-none-eabi-gcc.cmake
