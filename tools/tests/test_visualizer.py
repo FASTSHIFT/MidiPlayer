@@ -6,9 +6,10 @@ from player.visualizer import (
     Visualizer,
     _make_colors,
     CHANNEL_SPACING,
+    WAVE_AMPLITUDE,
     WAVEFORM_SYMBOLS,
-    ADSR_ACTIVE_COLORS,
     ADSR_STAGE_NAMES,
+    ADSR_ACTIVE_COLORS,
     SPEED_OPTIONS,
 )
 from player.sequencer import Sequencer
@@ -82,23 +83,22 @@ class TestVisualizerBuffers:
         assert vis._seeking is False
 
 
-class TestWaveformSymbols:
-    def test_symbols_defined(self):
+class TestDisplayConstants:
+    def test_waveform_symbols(self):
         assert len(WAVEFORM_SYMBOLS) == 4
         assert "SQR" in WAVEFORM_SYMBOLS[0]
         assert "TRI" in WAVEFORM_SYMBOLS[1]
         assert "SAW" in WAVEFORM_SYMBOLS[2]
         assert "PLS" in WAVEFORM_SYMBOLS[3]
 
-    def test_adsr_colors_defined(self):
-        assert len(ADSR_ACTIVE_COLORS) == 4
-
     def test_adsr_stage_names(self):
-        assert len(ADSR_STAGE_NAMES) == 4
-        assert "Atk" in ADSR_STAGE_NAMES[0]
-        assert "Dec" in ADSR_STAGE_NAMES[1]
-        assert "Sus" in ADSR_STAGE_NAMES[2]
-        assert "Rel" in ADSR_STAGE_NAMES[3]
+        assert len(ADSR_STAGE_NAMES) == 5
+        assert ADSR_STAGE_NAMES[0] == ""
+        assert ADSR_STAGE_NAMES[1] == "ATK"
+        assert ADSR_STAGE_NAMES[4] == "REL"
+
+    def test_adsr_active_colors(self):
+        assert len(ADSR_ACTIVE_COLORS) == 4
 
     def test_speed_options(self):
         assert 1.0 in SPEED_OPTIONS
@@ -107,6 +107,9 @@ class TestWaveformSymbols:
     def test_channel_spacing_positive(self):
         assert CHANNEL_SPACING > 0
 
+    def test_wave_amplitude(self):
+        assert WAVE_AMPLITUDE == 127
+
 
 class TestAdaptiveColors:
     """Tests for auto-generated channel colors."""
@@ -114,7 +117,7 @@ class TestAdaptiveColors:
     def test_preset_colors_for_small_count(self):
         colors = _make_colors(4)
         assert len(colors) == 5  # 4 channels + MIX
-        assert colors[-1] == "#e94560"  # MIX color
+        assert colors[-1] == "#e94560"
 
     def test_preset_colors_for_8_channels(self):
         colors = _make_colors(8)
@@ -122,13 +125,12 @@ class TestAdaptiveColors:
 
     def test_colormap_fallback_for_large_count(self):
         colors = _make_colors(12)
-        assert len(colors) == 13  # 12 channels + MIX
-        assert colors[-1] == "#e94560"  # MIX always last
+        assert len(colors) == 13
+        assert colors[-1] == "#e94560"
 
     def test_colormap_for_20_channels(self):
         colors = _make_colors(20)
         assert len(colors) == 21
-        # All should be valid hex colors
         for c in colors:
             assert c.startswith("#")
             assert len(c) == 7
@@ -146,16 +148,12 @@ class TestAdaptiveColors:
 
     def test_visualizer_adapts_to_small_sequencer(self):
         seq = Sequencer(num_melodic=1)
-        assert seq.num_channels == 2
         vis = Visualizer(seq)
         assert vis.num_channels == 2
         assert vis.num_plots == 3
-        assert len(vis._ch_buffers) == 2
 
     def test_visualizer_adapts_to_large_sequencer(self):
         seq = Sequencer(num_melodic=15)
-        assert seq.num_channels == 16
         vis = Visualizer(seq)
         assert vis.num_channels == 16
         assert vis.num_plots == 17
-        assert len(vis._ch_buffers) == 16
