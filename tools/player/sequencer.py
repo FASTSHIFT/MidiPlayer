@@ -95,15 +95,13 @@ def parse_midi(filename, max_tracks=0):
 
                     if is_percussion:
                         adsr = get_percussion_adsr(msg.note)
-                        perc_vol = volume * 2 // 5
-                        dur_ms = min(dur_ms, 100) if dur_ms > 0 else 30
-                        if dur_ms > 0 and perc_vol > 0:
+                        if dur_ms > 0:
                             percussion_events.append(
                                 NoteEvent(
                                     start_ms,
                                     dur_ms,
                                     0,
-                                    perc_vol,
+                                    volume,
                                     0,
                                     0,
                                     adsr,
