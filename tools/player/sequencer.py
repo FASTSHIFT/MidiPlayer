@@ -104,8 +104,8 @@ def parse_midi(filename, max_tracks=3):
             events.sort(key=lambda e: e.start_ms)
             tracks.append(events)
 
-    # Keep tracks with most notes
-    if len(tracks) > max_tracks:
+    # Keep tracks with most notes (0 or negative = keep all)
+    if max_tracks > 0 and len(tracks) > max_tracks:
         tracks.sort(key=len, reverse=True)
         tracks = tracks[:max_tracks]
 
@@ -173,8 +173,8 @@ class Sequencer:
         for env in self.envelopes:
             env.__init__()
 
-    def load_midi(self, filename, max_tracks=3):
-        """Parse MIDI file and load tracks."""
+    def load_midi(self, filename, max_tracks=0):
+        """Parse MIDI file and load tracks. max_tracks=0 means all."""
         tracks = parse_midi(filename, max_tracks)
         self.load(tracks)
         return len(tracks)

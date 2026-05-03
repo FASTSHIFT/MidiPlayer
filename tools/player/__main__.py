@@ -10,17 +10,19 @@ Usage:
 
 import argparse
 import time
+import threading
 import numpy as np
 
 from .sequencer import Sequencer
-from .mixer import Mixer
+from .mixer import Mixer, NUM_CHANNELS
 from .oscillator import SAMPLE_RATE
 
 CHUNK_SIZE = 256  # 16ms at 16kHz
+NUM_MELODIC = NUM_CHANNELS - 1
 
 
-def play_audio(seq, mute=False):
-    """Play audio through pyaudio."""
+def play_audio(seq, mute=False, visualizer=None):
+    """Play audio through pyaudio, optionally feeding visualizer."""
     if not mute:
         import pyaudio
 
@@ -40,21 +42,44 @@ def play_audio(seq, mute=False):
 
     try:
         while seq.playing:
+            if visualizer and not visualizer.running:
+                break
+
             elapsed_s = time.time() - start_time
             current_ms = int(elapsed_s * 1000)
 
-            samples = seq.generate_chunk(CHUNK_SIZE, current_ms)
-            audio = Mixer.to_float32(samples)
+            # Generate per-channel samples for visualizer
+            if visualizer:
+                seq._process_events(current_ms)
+                # Extra envelope ticks
+                ticks = CHUNK_SIZE // 8
+                for _ in range(max(1, ticks) - 1):
+                    for ch in range(NUM_CHANNELS):
+                        level = seq.envelopes[ch].tick()
+                        if ch < NUM_MELODIC:
+                            seq.oscillators[ch].set_vol(level)
+                        else:
+                            seq.noise.set_vol(level)
+
+                ch_samples = []
+                for osc in seq.oscillators:
+                    ch_samples.append(osc.generate(CHUNK_SIZE))
+                ch_samples.append(seq.noise.generate(CHUNK_SIZE))
+                mix = seq.mixer.mix(ch_samples)
+                visualizer.update_buffers(ch_samples, mix)
+                audio = Mixer.to_float32(mix)
+            else:
+                samples = seq.generate_chunk(CHUNK_SIZE, current_ms)
+                audio = Mixer.to_float32(samples)
 
             if stream:
                 stream.write(audio.tobytes())
             else:
-                # Mute mode: throttle to ~realtime
                 time.sleep(CHUNK_SIZE / SAMPLE_RATE)
 
-            # Print progress every second
+            # Print progress
             now = time.time()
-            if now - last_print >= 1.0:
+            if now - last_print >= 1.0 and not visualizer:
                 last_print = now
                 pct = seq.progress_pct
                 elapsed = seq.elapsed_ms
@@ -70,7 +95,8 @@ def play_audio(seq, mute=False):
     except KeyboardInterrupt:
         pass
     finally:
-        print()
+        if not visualizer:
+            print()
         if stream:
             stream.stop_stream()
             stream.close()
@@ -84,13 +110,12 @@ def export_wav(seq, output_path):
     print(f"Rendering to {output_path}...")
 
     frames = []
-    current_ms = 1  # Start at 1 to avoid start_ms re-initialization issue
+    current_ms = 1
     chunk_ms = CHUNK_SIZE * 1000 // SAMPLE_RATE
 
     while seq.playing:
         samples = seq.generate_chunk(CHUNK_SIZE, current_ms)
         audio = Mixer.to_float32(samples)
-        # Convert to 16-bit PCM
         pcm = (audio * 32767).astype(np.int16)
         frames.append(pcm.tobytes())
         current_ms += chunk_ms
@@ -111,10 +136,13 @@ def main():
     )
     parser.add_argument("input", help="MIDI file to play")
     parser.add_argument(
-        "-t", "--tracks", type=int, default=3, help="Max tracks (default: 3)"
+        "-t", "--tracks", type=int, default=0, help="Max tracks (0 = all, default: all)"
     )
     parser.add_argument("-o", "--output", help="Export to WAV file")
     parser.add_argument("--mute", action="store_true", help="Mute audio output")
+    parser.add_argument(
+        "--vis", action="store_true", help="Show real-time waveform visualization"
+    )
     args = parser.parse_args()
 
     seq = Sequencer()
@@ -124,6 +152,19 @@ def main():
 
     if args.output:
         export_wav(seq, args.output)
+    elif args.vis:
+        from .visualizer import Visualizer
+
+        vis = Visualizer(seq)
+
+        # Run audio in background thread
+        audio_thread = threading.Thread(
+            target=play_audio, args=(seq, args.mute, vis), daemon=True
+        )
+        audio_thread.start()
+
+        # Visualizer runs on main thread (matplotlib requirement)
+        vis.run()
     else:
         play_audio(seq, mute=args.mute)
 
