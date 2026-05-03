@@ -13,7 +13,16 @@
 
 /* PWM output pin */
 #define AUDIO_PWM_PIN PA0
-#define AUDIO_PWM_ARR 1023
+
+/*
+ * PWM resolution: 1024 levels (10-bit)
+ * PWM_Init(pin, resolution, frequency):
+ *   ARR = resolution - 1 = 1023
+ *   PSC = F_CPU / resolution / frequency - 1
+ *   -> 72MHz / 1024 / 70312 ≈ 0 -> PSC=0, actual freq = 72MHz/1024 ≈ 70.3kHz
+ */
+#define AUDIO_PWM_RESOLUTION (1 << MP_OSC_PWM_BITS) /* 1024 */
+#define AUDIO_PWM_FREQUENCY  (F_CPU / AUDIO_PWM_RESOLUTION) /* ~70.3kHz */
 
 /* Sample rate timer */
 #define AUDIO_SR_TIM TIM3
@@ -32,10 +41,12 @@ static void audio_sample_isr(void) {
 }
 
 void audio_hw_init(void) {
-    /* Configure PWM: ARR=1023 (10-bit), PSC=0 -> 72MHz/1024 ≈ 70.3kHz */
-    PWM_Init(AUDIO_PWM_PIN, MP_OSC_DC_OFFSET, 72000000 / (AUDIO_PWM_ARR + 1));
+    PWM_Init(AUDIO_PWM_PIN, AUDIO_PWM_RESOLUTION, AUDIO_PWM_FREQUENCY);
 
-    /* Configure TIM3 as 16kHz sample rate interrupt (62.5us period) */
+    /* Set initial duty to DC offset (silence) */
+    analogWrite(AUDIO_PWM_PIN, MP_OSC_DC_OFFSET);
+
+    /* Configure TIM3 as 16kHz sample rate interrupt */
     Timer_SetInterrupt(AUDIO_SR_TIM, 1000000 / MP_OSC_SAMPLE_RATE, audio_sample_isr);
     Timer_SetEnable(AUDIO_SR_TIM, true);
 }
