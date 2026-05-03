@@ -205,7 +205,7 @@ def main():
     elif args.vis:
         from .visualizer import Visualizer
 
-        vis = Visualizer(seq)
+        vis = Visualizer(seq, title=args.input)
 
         audio_thread = threading.Thread(
             target=play_audio, args=(seq, args.mute, vis), daemon=True

@@ -157,3 +157,20 @@ class TestAdaptiveColors:
         vis = Visualizer(seq)
         assert vis.num_channels == 16
         assert vis.num_plots == 17
+
+
+class TestVisualizerTitle:
+    def test_default_title_empty(self):
+        seq = Sequencer()
+        vis = Visualizer(seq)
+        assert vis.title == ""
+
+    def test_custom_title(self):
+        seq = Sequencer()
+        vis = Visualizer(seq, title="resources/Baby.mid")
+        assert vis.title == "resources/Baby.mid"
+
+    def test_title_stored(self):
+        seq = Sequencer()
+        vis = Visualizer(seq, title="/path/to/My Song.mid")
+        assert "My Song" in vis.title

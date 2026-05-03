@@ -89,8 +89,9 @@ def phase_inc_to_note_name(phase_inc):
 class Visualizer:
     """Real-time waveform visualization — pure blit, keyboard controls."""
 
-    def __init__(self, sequencer):
+    def __init__(self, sequencer, title=""):
         self.seq = sequencer
+        self.title = title
         self.num_channels = sequencer.num_channels
         self.num_melodic = sequencer.num_melodic
         self.num_plots = self.num_channels + 1
@@ -141,6 +142,10 @@ class Visualizer:
         # --- Figure + single Axes ---
         fig_h = max(6, min(1.2 * n_total + 1.0, 16))
         fig = plt.figure(figsize=(13, fig_h), facecolor="#1a1a2e")
+        import os
+
+        song_name = os.path.splitext(os.path.basename(self.title))[0]
+        fig.canvas.manager.set_window_title(f"MidiPlayer: {song_name}")
         ax = fig.add_axes([0.05, 0.06, 0.94, 0.92], facecolor="#16213e")
 
         # Layout: waveform area + vertical vol bar + ADSR indicators
