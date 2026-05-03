@@ -49,12 +49,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r tools/requirements-dev.txt
+        run: tools/setup_env.sh --ci
 
       - name: Check Python format + lint
-        run: |
-          chmod +x tools/python_format.sh
-          tools/python_format.sh --check --lint
+        run: tools/python_format.sh --check --lint
 
       - name: Run Python tests
         working-directory: tools

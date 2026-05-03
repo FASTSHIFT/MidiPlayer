@@ -146,18 +146,12 @@ Word1 [31:0]:  phase_inc(15) | volume(7) | channel(2) | mod_idx(3) | adsr(3) | w
 ### 环境准备
 
 ```bash
-# Python 依赖（MIDI 转换 + PC 播放器）
-pip install mido numpy pyaudio matplotlib
+# 一键安装所有依赖（Python + 系统包 + ARM 工具链）
+tools/setup_env.sh
 
-# ARM 工具链（STM32 编译）
-sudo apt install gcc-arm-none-eabi
-
-# 烧录工具（二选一）
-sudo apt install stlink-tools    # ST-Link
-sudo apt install openocd         # DAPLink
-
-# 可视化依赖（--vis 需要 tkinter）
-sudo apt install python3-tk
+# 或按需安装
+tools/setup_env.sh --python   # 仅 Python 依赖
+tools/setup_env.sh --stm32    # 仅 ARM 工具链
 ```
 
 ### 一键播放 MIDI（烧录到 STM32）
@@ -352,6 +346,7 @@ MidiPlayer/
 │   ├── midi_to_header.py   #   MIDI → C 头文件转换器
 │   ├── load_midi.sh        #   一键转换+编译+烧录
 │   ├── flash.sh            #   固件烧录（ST-Link / DAPLink）
+│   ├── setup_env.sh        #   一键环境安装
 │   ├── code_format.sh      #   C 代码格式化
 │   ├── python_format.sh    #   Python 格式化 + lint
 │   ├── requirements.txt    #   Python 运行依赖
