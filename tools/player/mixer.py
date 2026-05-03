@@ -1,5 +1,5 @@
 """
-Mixer — 4-channel integer mixing with DC offset.
+Mixer — 8-channel integer mixing with DC offset.
 
 Port of the mixing logic from source/mp_osc.c.
 """
@@ -7,7 +7,7 @@ Port of the mixing logic from source/mp_osc.c.
 import numpy as np
 
 DC_OFFSET = 512
-NUM_CHANNELS = 4  # 3 melodic + 1 noise
+NUM_CHANNELS = 8  # 7 melodic + 1 noise
 
 
 class Mixer:

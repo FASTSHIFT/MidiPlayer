@@ -16,9 +16,9 @@
 extern "C" {
 #endif
 
-/* Configurable channel count (default 4: 3 melodic + 1 noise) */
+/* Configurable channel count (default 8: 7 melodic + 1 noise) */
 #ifndef MP_OSC_CH_COUNT
-#define MP_OSC_CH_COUNT 4
+#define MP_OSC_CH_COUNT 8
 #endif
 
 /* Audio parameters */

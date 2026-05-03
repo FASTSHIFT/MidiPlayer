@@ -94,7 +94,7 @@ class TestSequencer:
 
 
 def make_percussion_events():
-    """Create percussion events assigned to noise channel (ch3)."""
+    """Create percussion events assigned to noise channel."""
     from player.instruments import NOISE_CH
 
     return [
@@ -124,20 +124,22 @@ def make_percussion_events():
 class TestPercussionPlayback:
     def test_noise_channel_triggered(self):
         """Percussion events should trigger the noise channel envelope."""
+        from player.instruments import NOISE_CH
+
         seq = Sequencer()
         seq.load([make_percussion_events()])
 
-        # Process first event
         seq.generate_chunk(256, 0)
         for ms in range(1, 10):
             seq.generate_chunk(256, ms)
 
-        # Noise envelope should be active
-        noise_env = seq.envelopes[3]
+        noise_env = seq.envelopes[NOISE_CH]
         assert noise_env.level > 0
 
     def test_noise_with_melodic(self):
         """Percussion and melodic tracks should play simultaneously."""
+        from player.instruments import NOISE_CH
+
         seq = Sequencer()
         melodic = make_events()
         percussion = make_percussion_events()
@@ -147,9 +149,8 @@ class TestPercussionPlayback:
         for ms in range(1, 10):
             seq.generate_chunk(256, ms)
 
-        # Both melodic oscillator and noise should be active
         assert seq.oscillators[0].vol > 0
-        assert seq.envelopes[3].level > 0
+        assert seq.envelopes[NOISE_CH].level > 0
 
     def test_percussion_auto_stop(self):
         """Sequencer should stop after all percussion events finish."""

@@ -26,7 +26,7 @@ BUILD_DIR="$EXAMPLE_DIR/build"
 CONVERTER="$PROJECT_ROOT/tools/midi_to_header.py"
 FLASH_SCRIPT="$SCRIPT_DIR/flash.sh"
 
-MAX_TRACKS=3
+MAX_TRACKS=7
 PROBE="daplink"
 DO_FLASH=1
 MIDI_FILE=""

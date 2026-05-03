@@ -18,13 +18,10 @@
 #define MP_ENVELOPE_H
 
 #include <stdint.h>
+#include "mp_osc.h" /* for MP_OSC_CH_COUNT */
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#ifndef MP_OSC_CH_COUNT
-#define MP_OSC_CH_COUNT 4
 #endif
 
 /* Envelope stage */

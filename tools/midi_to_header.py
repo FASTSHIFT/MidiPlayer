@@ -104,7 +104,7 @@ def midi_note_to_phase_inc(note):
 
 
 # Noise channel index (must match MP_OSC_NOISE_CH)
-NOISE_CH = 3
+NOISE_CH = 7
 
 # Maximum note duration in ms (12-bit field, max 4095)
 MAX_NOTE_DURATION_MS = 4095
@@ -219,9 +219,10 @@ def assign_channels(tracks):
     """Assign oscillator channels to note events.
 
     Melodic tracks use channels 0-2 via round-robin + spillover.
-    The last track may be percussion (phase_inc == 0), assigned to channel 3 (noise).
+    Melodic tracks use channels 0-6 via round-robin + spillover.
+    The last track may be percussion (phase_inc == 0), assigned to channel 7 (noise).
     """
-    num_melodic_ch = 3  # channels 0, 1, 2 only
+    num_melodic_ch = NOISE_CH  # channels 0~6
 
     for track_idx, events in enumerate(tracks):
         # Detect percussion track: all events have phase_inc == 0
@@ -292,11 +293,12 @@ def assign_channels(tracks):
 
 
 # Mod value -> mod_idx mapping (must match mp_mod_table in mp_sequencer.h)
-MOD_TO_IDX = {127: 0, 64: 1, 32: 2, 191: 3, 96: 4, 160: 5, 16: 6}
+# 2-bit index: 0=50%, 1=25%, 2=12.5%, 3=75%
+MOD_TO_IDX = {127: 0, 64: 1, 32: 2, 191: 3}
 
 
 def mod_value_to_idx(mod):
-    """Convert a mod value to its 3-bit index. Default to 0 (50%)."""
+    """Convert a mod value to its 2-bit index. Default to 0 (50%)."""
     return MOD_TO_IDX.get(mod, 0)
 
 
@@ -306,12 +308,12 @@ def pack_word0(start_ms, duration_ms):
 
 
 def pack_word1(phase_inc, volume, channel, mod_idx, adsr, waveform):
-    """Pack remaining fields into uint32_t."""
+    """Pack remaining fields into uint32_t (new 8-channel layout)."""
     return (
         (phase_inc & 0x7FFF)
         | ((volume & 0x7F) << 15)
-        | ((channel & 0x03) << 22)
-        | ((mod_idx & 0x07) << 24)
+        | ((channel & 0x07) << 22)
+        | ((mod_idx & 0x03) << 25)
         | ((adsr & 0x07) << 27)
         | ((waveform & 0x03) << 30)
     )

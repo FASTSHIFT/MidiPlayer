@@ -18,7 +18,7 @@ extern "C" {
 
 /* Maximum number of simultaneous tracks */
 #ifndef MP_SEQ_MAX_TRACKS
-#define MP_SEQ_MAX_TRACKS 4
+#define MP_SEQ_MAX_TRACKS 8
 #endif
 
 /*
@@ -33,8 +33,8 @@ extern "C" {
  *   Word 1 [31:0]:
  *     phase_inc     [14:0]  — 15 bits, max 32767 (covers C1..C8)
  *     volume        [21:15] —  7 bits, 0~127
- *     channel       [23:22] —  2 bits, 0~3
- *     mod_idx       [26:24] —  3 bits, index into duty cycle table
+ *     channel       [24:22] —  3 bits, 0~7
+ *     mod_idx       [26:25] —  2 bits, index into duty cycle table
  *     adsr_preset   [29:27] —  3 bits, 0~7
  *     waveform      [31:30] —  2 bits, 0~3
  */
@@ -43,18 +43,14 @@ typedef struct {
     uint32_t word1;
 } mp_note_event_t;
 
-/* Duty cycle lookup table indexed by mod_idx (3 bits, 0~7) */
+/* Duty cycle lookup table indexed by mod_idx (2 bits, 0~3) */
 /* clang-format off */
-#define MP_MOD_TABLE_SIZE 8
+#define MP_MOD_TABLE_SIZE 4
 static const uint8_t mp_mod_table[MP_MOD_TABLE_SIZE] = {
     127,  /* 0: 50%   — classic square */
     64,   /* 1: 25%   — bright, thin */
     32,   /* 2: 12.5% — very thin, nasal */
     191,  /* 3: 75%   — hollow */
-    96,   /* 4: 37.5% — slightly bright */
-    160,  /* 5: 62.5% — slightly hollow */
-    16,   /* 6: 6.25% — extremely thin */
-    0,    /* 7: reserved (treated as 50%) */
 };
 /* clang-format on */
 
@@ -64,8 +60,8 @@ static const uint8_t mp_mod_table[MP_MOD_TABLE_SIZE] = {
 #define MP_EVT_DURATION_MS(e) ((e)->word0 >> 20)
 #define MP_EVT_PHASE_INC(e) ((e)->word1 & 0x7FFF)
 #define MP_EVT_VOLUME(e) (((e)->word1 >> 15) & 0x7F)
-#define MP_EVT_CHANNEL(e) (((e)->word1 >> 22) & 0x03)
-#define MP_EVT_MOD_IDX(e) (((e)->word1 >> 24) & 0x07)
+#define MP_EVT_CHANNEL(e) (((e)->word1 >> 22) & 0x07)
+#define MP_EVT_MOD_IDX(e) (((e)->word1 >> 25) & 0x03)
 #define MP_EVT_ADSR(e) (((e)->word1 >> 27) & 0x07)
 #define MP_EVT_WAVEFORM(e) (((e)->word1 >> 30) & 0x03)
 
@@ -77,8 +73,8 @@ static const uint8_t mp_mod_table[MP_MOD_TABLE_SIZE] = {
 #define MP_EVT_PACK_WORD0(start_ms, dur_ms) (((uint32_t)(start_ms)&0xFFFFF) | (((uint32_t)(dur_ms)&0xFFF) << 20))
 
 #define MP_EVT_PACK_WORD1(phase_inc, vol, ch, mod_idx, adsr, wave)                                   \
-    (((uint32_t)(phase_inc)&0x7FFF) | (((uint32_t)(vol)&0x7F) << 15) | (((uint32_t)(ch)&0x03) << 22) \
-     | (((uint32_t)(mod_idx)&0x07) << 24) | (((uint32_t)(adsr)&0x07) << 27) | (((uint32_t)(wave)&0x03) << 30))
+    (((uint32_t)(phase_inc)&0x7FFF) | (((uint32_t)(vol)&0x7F) << 15) | (((uint32_t)(ch)&0x07) << 22) \
+     | (((uint32_t)(mod_idx)&0x03) << 25) | (((uint32_t)(adsr)&0x07) << 27) | (((uint32_t)(wave)&0x03) << 30))
 
 /* Track descriptor */
 typedef struct {

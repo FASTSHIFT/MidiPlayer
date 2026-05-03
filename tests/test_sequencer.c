@@ -39,13 +39,13 @@ static const mp_score_t test_score = {
 static void test_evt_pack_unpack(void) {
     mp_note_event_t ev = {
         MP_EVT_PACK_WORD0(12345, 500),
-        MP_EVT_PACK_WORD1(1072, 100, 2, 1, 3, 2),
+        MP_EVT_PACK_WORD1(1072, 100, 5, 1, 3, 2),
     };
     TEST_ASSERT_EQUAL(12345, MP_EVT_START_MS(&ev));
     TEST_ASSERT_EQUAL(500, MP_EVT_DURATION_MS(&ev));
     TEST_ASSERT_EQUAL(1072, MP_EVT_PHASE_INC(&ev));
     TEST_ASSERT_EQUAL(100, MP_EVT_VOLUME(&ev));
-    TEST_ASSERT_EQUAL(2, MP_EVT_CHANNEL(&ev));
+    TEST_ASSERT_EQUAL(5, MP_EVT_CHANNEL(&ev));
     TEST_ASSERT_EQUAL(1, MP_EVT_MOD_IDX(&ev));
     TEST_ASSERT_EQUAL(64, MP_EVT_MOD(&ev)); /* idx 1 -> 64 (25%) */
     TEST_ASSERT_EQUAL(3, MP_EVT_ADSR(&ev));
@@ -56,14 +56,14 @@ static void test_evt_pack_max_values(void) {
     /* Max values for each field */
     mp_note_event_t ev = {
         MP_EVT_PACK_WORD0(0xFFFFF, 0xFFF),
-        MP_EVT_PACK_WORD1(0x7FFF, 127, 3, 7, 7, 3),
+        MP_EVT_PACK_WORD1(0x7FFF, 127, 7, 3, 7, 3),
     };
     TEST_ASSERT_EQUAL(0xFFFFF, MP_EVT_START_MS(&ev));
     TEST_ASSERT_EQUAL(0xFFF, MP_EVT_DURATION_MS(&ev));
     TEST_ASSERT_EQUAL(0x7FFF, MP_EVT_PHASE_INC(&ev));
     TEST_ASSERT_EQUAL(127, MP_EVT_VOLUME(&ev));
-    TEST_ASSERT_EQUAL(3, MP_EVT_CHANNEL(&ev));
-    TEST_ASSERT_EQUAL(7, MP_EVT_MOD_IDX(&ev));
+    TEST_ASSERT_EQUAL(7, MP_EVT_CHANNEL(&ev));
+    TEST_ASSERT_EQUAL(3, MP_EVT_MOD_IDX(&ev));
     TEST_ASSERT_EQUAL(7, MP_EVT_ADSR(&ev));
     TEST_ASSERT_EQUAL(3, MP_EVT_WAVEFORM(&ev));
 }
@@ -174,6 +174,11 @@ static const mp_note_event_t test_events_ch1[] = {
     {MP_EVT_PACK_WORD0(50, 150), MP_EVT_PACK_WORD1(536, 70, 1, TEST_MOD_IDX, TEST_ADSR, TEST_WAVE)},
 };
 
+/* Test event on channel 5 (beyond old 4-channel limit) */
+static const mp_note_event_t test_events_ch5[] = {
+    {MP_EVT_PACK_WORD0(0, 100), MP_EVT_PACK_WORD1(1072, 90, 5, TEST_MOD_IDX, TEST_ADSR, TEST_WAVE)},
+};
+
 static const mp_track_t test_multi_tracks[] = {
     {.events = test_events_ch0, .event_count = 2},
     {.events = test_events_ch1, .event_count = 1},
@@ -200,6 +205,29 @@ static void test_seq_multitrack_simultaneous(void) {
     TEST_ASSERT_EQUAL(80, p0->vol);
     TEST_ASSERT_EQUAL(536, p1->phase_increment);
     TEST_ASSERT_EQUAL(70, p1->vol);
+}
+
+/* Test that channels 4~6 work (expanded from old 3 melodic limit) */
+static void test_seq_expanded_channels(void) {
+    static const mp_track_t tracks_ch5[] = {
+        {.events = test_events_ch5, .event_count = 1},
+    };
+    static const mp_score_t score_ch5 = {
+        .tracks = tracks_ch5,
+        .track_count = 1,
+    };
+
+    mp_osc_init();
+    mp_env_init();
+    mp_seq_play(&score_ch5);
+
+    mp_seq_tick(1000);
+    mp_seq_tick(1001);
+    mp_seq_tick(1002);
+
+    struct mp_osc_params* p5 = mp_osc_get_params(5);
+    TEST_ASSERT_EQUAL(1072, p5->phase_increment);
+    TEST_ASSERT_EQUAL(90, p5->vol);
 }
 
 /* --- Duty cycle test --- */
@@ -243,6 +271,7 @@ void test_sequencer_run(void) {
     RUN_TEST(test_seq_second_note_triggers);
     RUN_TEST(test_seq_auto_stop_after_all_notes);
     RUN_TEST(test_seq_multitrack_simultaneous);
+    RUN_TEST(test_seq_expanded_channels);
     RUN_TEST(test_seq_duty_cycle_applied);
 
     TEST_SUITE_END();

@@ -62,8 +62,9 @@ class TestVisualizerBuffers:
         vis.update_buffers(ch_data, mix_data)
         assert vis._ch_buffers[0][-1] == 42
         assert vis._ch_buffers[1][-1] == 42
-        assert vis._ch_buffers[2][-1] == 0
-        assert vis._ch_buffers[3][-1] == 0
+        # Remaining channels should stay zero
+        for i in range(2, NUM_CHANNELS):
+            assert vis._ch_buffers[i][-1] == 0
 
     def test_seeking_flag_default(self):
         seq = Sequencer()

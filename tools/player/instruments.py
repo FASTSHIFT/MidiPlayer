@@ -14,7 +14,7 @@ MOD_25 = 64
 MOD_12 = 32
 
 # Noise channel index (last channel)
-NOISE_CH = 3
+NOISE_CH = 7
 
 
 def get_instrument_params(program):
