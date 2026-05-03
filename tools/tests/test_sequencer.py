@@ -449,3 +449,64 @@ class TestFormat0MultiChannel:
                 f"{fname}: has {len(melodic_chs)} MIDI channels "
                 f"but only {seq.num_melodic} melodic tracks"
             )
+
+
+class TestPercussionRawVelocity:
+    """Verify percussion uses raw MIDI velocity without scaling."""
+
+    def test_player_percussion_raw_velocity(self):
+        """parse_midi should not scale percussion velocity."""
+        import os
+
+        midi_path = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+            "BeatIt.mid",
+        )
+        if not os.path.exists(midi_path):
+            return
+
+        from player.sequencer import parse_midi
+
+        tracks, _, num_melodic = parse_midi(midi_path, max_tracks=0)
+        perc_track = tracks[-1]
+
+        # All percussion velocities should be <= 127 (raw MIDI range)
+        # and some should be > 50 (would be < 50 if scaled to 40%)
+        vols = [ev.volume for ev in perc_track]
+        assert max(vols) > 50, "Percussion velocity looks scaled down"
+        assert all(0 < v <= 127 for v in vols)
+
+    def test_converter_percussion_raw_velocity(self):
+        """midi_to_header.py should not scale percussion velocity."""
+        import os
+        import importlib.util
+
+        midi_path = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+            "BeatIt.mid",
+        )
+        if not os.path.exists(midi_path):
+            return
+
+        converter_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "midi_to_header.py",
+        )
+        spec = importlib.util.spec_from_file_location("converter", converter_path)
+        converter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(converter)
+
+        tracks = converter.parse_midi(midi_path, 0)
+        # Last track is percussion (phase_inc == 0)
+        perc_track = [t for t in tracks if all(e[1] == 0 for e in t)]
+        assert perc_track, "No percussion track found"
+
+        vols = [e[3] for e in perc_track[0]]  # index 3 = volume
+        assert max(vols) > 50, "Converter percussion velocity looks scaled down"
+        assert all(0 < v <= 127 for v in vols)

@@ -162,15 +162,13 @@ def parse_midi(filename, max_tracks):
 
                     if is_percussion:
                         adsr = get_percussion_adsr(msg.note)
-                        perc_vol = volume * 2 // 5  # 40% of original
-                        duration_ms = min(duration_ms, 100) if duration_ms > 0 else 30
-                        if duration_ms > 0 and perc_vol > 0:
+                        if duration_ms > 0:
                             percussion_events.append(
                                 (
                                     start_ms,
                                     0,  # phase_inc = 0 for noise
                                     duration_ms,
-                                    perc_vol,
+                                    volume,
                                     0,  # mod (unused for noise)
                                     adsr,
                                     0,  # waveform (unused for noise)
