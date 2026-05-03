@@ -21,16 +21,13 @@ static void buzzer_test(void) {
     pinMode(BUZZER_PIN, OUTPUT);
 
     tone(BUZZER_PIN, 523);
-    delay(300);
-    noTone(BUZZER_PIN);
+    delay(80);
+    tone(BUZZER_PIN, 880);
+    delay(80);
+    tone(BUZZER_PIN, 659, 80);
+
+    Serial.println("Buzzer test done.");
     delay(100);
-
-    tone(BUZZER_PIN, 1047);
-    delay(300);
-    noTone(BUZZER_PIN);
-
-    Serial.println("Buzzer test done.\n");
-    delay(300);
 }
 
 int main(void) {
