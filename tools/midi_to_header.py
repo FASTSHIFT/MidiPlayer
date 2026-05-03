@@ -103,8 +103,9 @@ def midi_note_to_phase_inc(note):
     return round(freq * 65536 / SAMPLE_RATE)
 
 
-# Noise channel index (must match MP_OSC_NOISE_CH)
-NOISE_CH = 7
+# Channel configuration (must match MP_OSC_CH_COUNT / MP_OSC_NOISE_CH)
+NUM_CHANNELS = 8
+NOISE_CH = NUM_CHANNELS - 1
 
 # Maximum note duration in ms (12-bit field, max 4095)
 MAX_NOTE_DURATION_MS = 4095

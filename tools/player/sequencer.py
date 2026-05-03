@@ -136,9 +136,10 @@ def parse_midi(filename, max_tracks=0):
         melodic_tracks.sort(key=len, reverse=True)
         melodic_tracks = melodic_tracks[:max_tracks]
 
-    # Assign melodic channels (0~2)
+    # Assign melodic channels — one per track, no upper limit in Python
+    num_melodic = len(melodic_tracks)
     for track_idx, events in enumerate(melodic_tracks):
-        base_ch = track_idx % NUM_MELODIC
+        base_ch = track_idx % num_melodic
         active = {}
         for ev in events:
             expired = [ch for ch, off in active.items() if off <= ev.start_ms]
@@ -147,30 +148,58 @@ def parse_midi(filename, max_tracks=0):
 
             assigned = base_ch
             if base_ch in active:
-                for ch in range(NUM_MELODIC):
+                for ch in range(num_melodic):
                     if ch not in active:
                         assigned = ch
                         break
             active[assigned] = ev.start_ms + ev.duration_ms
             ev.channel = assigned
 
-    # Append percussion track (already assigned to NOISE_CH)
+    # Append percussion track — noise channel = num_melodic
+    noise_ch = num_melodic
     tracks = melodic_tracks
     if percussion_events:
+        for ev in percussion_events:
+            ev.channel = noise_ch
         percussion_events.sort(key=lambda e: e.start_ms)
         tracks.append(percussion_events)
 
-    return tracks
+    # Return tracks + actual channel count
+    num_channels = noise_ch + (1 if percussion_events else 0)
+    if not percussion_events:
+        num_channels = num_melodic
+
+    return tracks, num_channels, num_melodic
 
 
 class Sequencer:
     """Event-driven sequencer driving oscillators and envelopes."""
 
-    def __init__(self):
-        self.oscillators = [Oscillator() for _ in range(NUM_MELODIC)]
+    def __init__(self, num_melodic=NUM_MELODIC):
+        self.num_melodic = num_melodic
+        self.num_channels = num_melodic + 1  # +1 for noise
+        self.oscillators = [Oscillator() for _ in range(num_melodic)]
         self.noise = NoiseChannel()
-        self.envelopes = [Envelope() for _ in range(NUM_CHANNELS)]
+        self.envelopes = [Envelope() for _ in range(self.num_channels)]
         self.mixer = Mixer()
+
+        self.tracks = []
+        self.track_indices = []
+        self.channel_off_times = {}  # channel -> off_time_ms
+        self.playing = False
+        self.paused = False
+        self.speed = 1.0
+        self.start_ms = 0
+        self.elapsed_ms = 0
+        self.total_ms = 0
+
+    def _resize(self, num_melodic):
+        """Resize oscillator/envelope arrays for a new channel count."""
+        self.num_melodic = num_melodic
+        self.num_channels = num_melodic + 1
+        self.oscillators = [Oscillator() for _ in range(num_melodic)]
+        self.noise = NoiseChannel()
+        self.envelopes = [Envelope() for _ in range(self.num_channels)]
 
         self.tracks = []
         self.track_indices = []
@@ -215,8 +244,13 @@ class Sequencer:
             env.__init__()
 
     def load_midi(self, filename, max_tracks=0):
-        """Parse MIDI file and load tracks. max_tracks=0 means all."""
-        tracks = parse_midi(filename, max_tracks)
+        """Parse MIDI file and load tracks. max_tracks=0 means all.
+
+        Automatically resizes oscillators/envelopes to match the MIDI's
+        actual melodic track count (capped at NUM_MELODIC).
+        """
+        tracks, num_channels, num_melodic = parse_midi(filename, max_tracks)
+        self._resize(num_melodic)
         self.load(tracks)
         return len(tracks)
 
@@ -283,7 +317,7 @@ class Sequencer:
         for ch in list(self.channel_off_times.keys()):
             if elapsed >= self.channel_off_times[ch]:
                 self.envelopes[ch].note_off()
-                if ch < NUM_MELODIC:
+                if ch < self.num_melodic:
                     self.oscillators[ch].set_freq(0)
                 del self.channel_off_times[ch]
 
@@ -298,7 +332,7 @@ class Sequencer:
                     break
 
                 ch = ev.channel
-                if ch < NUM_MELODIC:
+                if ch < self.num_melodic:
                     self.oscillators[ch].set_mod(ev.mod)
                     self.oscillators[ch].set_waveform(ev.waveform)
                     self.oscillators[ch].set_freq(ev.phase_inc)
@@ -315,9 +349,9 @@ class Sequencer:
             all_done = False
 
         # Envelope tick
-        for ch in range(NUM_CHANNELS):
+        for ch in range(self.num_channels):
             level = self.envelopes[ch].tick()
-            if ch < NUM_MELODIC:
+            if ch < self.num_melodic:
                 self.oscillators[ch].set_vol(level)
             else:
                 self.noise.set_vol(level)
@@ -345,9 +379,9 @@ class Sequencer:
         # For simplicity, we tick once per chunk at 2kHz equivalent
         ticks_in_chunk = chunk_size // PRESCALER_DIV
         for _ in range(max(1, ticks_in_chunk) - 1):
-            for ch in range(NUM_CHANNELS):
+            for ch in range(self.num_channels):
                 level = self.envelopes[ch].tick()
-                if ch < NUM_MELODIC:
+                if ch < self.num_melodic:
                     self.oscillators[ch].set_vol(level)
                 else:
                     self.noise.set_vol(level)

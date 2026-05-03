@@ -14,12 +14,11 @@ import threading
 import numpy as np
 
 from .sequencer import Sequencer
-from .mixer import Mixer, NUM_CHANNELS
+from .mixer import Mixer
 from .oscillator import SAMPLE_RATE
 
 CHUNK_SIZE = 256  # 16ms at 16kHz
 AUDIO_BUFFER_CHUNKS = 4  # pyaudio buffer = 4 chunks = 64ms headroom
-NUM_MELODIC = NUM_CHANNELS - 1
 
 
 def play_audio(seq, mute=False, visualizer=None):
@@ -28,9 +27,7 @@ def play_audio(seq, mute=False, visualizer=None):
     pa = None
 
     wall_start = time.time()
-    speed_offset_ms = 0  # accumulated offset from speed changes
     last_wall = wall_start
-    last_speed = seq.speed
     last_print = 0
 
     # Wait for visualizer to be ready before starting the clock
@@ -100,9 +97,9 @@ def play_audio(seq, mute=False, visualizer=None):
                 seq._process_events(current_ms)
                 ticks = CHUNK_SIZE // 8
                 for _ in range(max(1, ticks) - 1):
-                    for ch in range(NUM_CHANNELS):
+                    for ch in range(seq.num_channels):
                         level = seq.envelopes[ch].tick()
-                        if ch < NUM_MELODIC:
+                        if ch < seq.num_melodic:
                             seq.oscillators[ch].set_vol(level)
                         else:
                             seq.noise.set_vol(level)
@@ -198,7 +195,10 @@ def main():
     seq = Sequencer()
     num_tracks = seq.load_midi(args.input, args.tracks)
     print(f"Loaded: {args.input}")
-    print(f"Tracks: {num_tracks}, Duration: {seq.total_ms // 1000}s")
+    print(
+        f"Tracks: {num_tracks}, Channels: {seq.num_melodic}+noise, "
+        f"Duration: {seq.total_ms // 1000}s"
+    )
 
     if args.output:
         export_wav(seq, args.output)

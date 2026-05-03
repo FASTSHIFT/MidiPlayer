@@ -184,3 +184,111 @@ class TestPercussionMapping:
             assert (
                 pc_adsr == conv_adsr
             ), f"note {note}: adsr mismatch {pc_adsr} vs {conv_adsr}"
+
+
+class TestChannelConfig:
+    """Tests for adaptive channel configuration."""
+
+    def test_noise_ch_derived_from_num_channels(self):
+        """Static NOISE_CH matches static NUM_CHANNELS (for C converter compat)."""
+        from player.instruments import NOISE_CH
+        from player.mixer import NUM_CHANNELS
+
+        assert NOISE_CH == NUM_CHANNELS - 1
+
+    def test_converter_noise_ch_matches(self):
+        """Converter NOISE_CH must match player NOISE_CH."""
+        from player.instruments import NOISE_CH
+        import importlib.util
+        import os
+
+        converter_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "midi_to_header.py",
+        )
+        spec = importlib.util.spec_from_file_location("converter", converter_path)
+        converter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(converter)
+
+        assert NOISE_CH == converter.NOISE_CH
+
+    def test_converter_num_channels_matches(self):
+        from player.mixer import NUM_CHANNELS
+        import importlib.util
+        import os
+
+        converter_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "midi_to_header.py",
+        )
+        spec = importlib.util.spec_from_file_location("converter", converter_path)
+        converter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(converter)
+
+        assert NUM_CHANNELS == converter.NUM_CHANNELS
+
+    def test_sequencer_default_melodic_count(self):
+        """Default Sequencer uses NUM_MELODIC oscillators."""
+        from player.sequencer import Sequencer, NUM_MELODIC
+        from player.mixer import NUM_CHANNELS
+
+        seq = Sequencer()
+        assert seq.num_melodic == NUM_MELODIC
+        assert seq.num_channels == NUM_CHANNELS
+        assert len(seq.oscillators) == NUM_MELODIC
+        assert len(seq.envelopes) == NUM_CHANNELS
+
+    def test_sequencer_adaptive_resize(self):
+        """Sequencer resizes to match MIDI file's actual track count."""
+        from player.sequencer import Sequencer, NoteEvent
+        from player.envelope import AdsrPreset
+        from player.oscillator import Waveform
+
+        # Create 5 single-event tracks
+        tracks = []
+        for i in range(5):
+            tracks.append(
+                [
+                    NoteEvent(
+                        i * 100, 50, 1072, 80, i, 127, AdsrPreset.ORGAN, Waveform.SQUARE
+                    )
+                ]
+            )
+
+        seq = Sequencer()
+        seq._resize(5)
+        seq.load(tracks)
+        assert seq.num_melodic == 5
+        assert seq.num_channels == 6  # 5 melodic + 1 noise
+        assert len(seq.oscillators) == 5
+        assert len(seq.envelopes) == 6
+
+    def test_sequencer_unlimited_channels(self):
+        """Python sequencer has no upper limit on melodic channels."""
+        from player.sequencer import Sequencer
+
+        seq = Sequencer(num_melodic=20)
+        assert seq.num_melodic == 20
+        assert len(seq.oscillators) == 20
+        assert len(seq.envelopes) == 21
+
+    def test_load_midi_adapts_channels(self):
+        """load_midi should set channel count from MIDI file."""
+        import os
+        from player.sequencer import Sequencer
+
+        # Pirates has 2 melodic tracks, no percussion
+        midi_path = os.path.join(
+            os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            ),
+            "resources",
+            "Pirates of the Caribbean - He's a Pirate.mid",
+        )
+        if not os.path.exists(midi_path):
+            return
+
+        seq = Sequencer()
+        seq.load_midi(midi_path)
+        assert seq.num_melodic == 2
+        assert len(seq.oscillators) == 2

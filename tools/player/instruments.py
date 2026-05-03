@@ -7,14 +7,15 @@ Maps MIDI percussion notes to ADSR presets for the noise channel.
 
 from .oscillator import Waveform
 from .envelope import AdsrPreset
+from .mixer import NUM_CHANNELS
 
 # Duty cycle values
 MOD_50 = 127
 MOD_25 = 64
 MOD_12 = 32
 
-# Noise channel index (last channel)
-NOISE_CH = 7
+# Noise channel index (last channel, derived from NUM_CHANNELS)
+NOISE_CH = NUM_CHANNELS - 1
 
 
 def get_instrument_params(program):

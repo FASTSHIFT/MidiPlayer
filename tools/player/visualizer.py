@@ -27,10 +27,6 @@ for _backend in _INTERACTIVE_BACKENDS:
 if not _backend_ok:
     matplotlib.use("Agg")
 
-from .mixer import NUM_CHANNELS
-
-NUM_MELODIC = NUM_CHANNELS - 1
-
 # Display constants
 WAVEFORM_SYMBOLS = ["SQR", "TRI", "SAW", "PLS"]
 NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
@@ -63,8 +59,9 @@ class Visualizer:
 
     def __init__(self, sequencer):
         self.seq = sequencer
-        self.num_channels = NUM_CHANNELS
-        self.num_plots = NUM_CHANNELS + 1  # channels + MIX
+        self.num_channels = sequencer.num_channels
+        self.num_melodic = sequencer.num_melodic
+        self.num_plots = self.num_channels + 1  # channels + MIX
         self.display_samples = 512
         self.running = False
         self._seeking = False  # True while user drags slider
@@ -134,17 +131,30 @@ class Visualizer:
         adsr_rects = []  # list of 4 Rectangles per channel
         x = np.arange(self.display_samples)
 
-        ch_colors = [
-            "#00d2ff",  # CH0
-            "#ff6b6b",  # CH1
-            "#ffd93d",  # CH2
-            "#6bcb77",  # CH3
-            "#ff9a3c",  # CH4
-            "#a78bfa",  # CH5
-            "#f472b6",  # CH6
-            "#b388ff",  # NOISE
-            "#e94560",  # MIX
+        # Colors: auto-generate from colormap, hand-picked for small counts
+        _PRESET_COLORS = [
+            "#00d2ff",
+            "#ff6b6b",
+            "#ffd93d",
+            "#6bcb77",
+            "#ff9a3c",
+            "#a78bfa",
+            "#f472b6",
+            "#b388ff",
         ]
+        _MIX_COLOR = "#e94560"
+        if self.num_channels <= len(_PRESET_COLORS):
+            ch_colors = _PRESET_COLORS[: self.num_channels] + [_MIX_COLOR]
+        else:
+            import matplotlib.cm as cm
+
+            cmap = cm.get_cmap("tab20", self.num_channels)
+            ch_colors = [
+                "#{:02x}{:02x}{:02x}".format(
+                    int(c[0] * 255), int(c[1] * 255), int(c[2] * 255)
+                )
+                for c in [cmap(i) for i in range(self.num_channels)]
+            ] + [_MIX_COLOR]
 
         for i, ax in enumerate(axes):
             ax.set_facecolor("#16213e")
@@ -166,7 +176,7 @@ class Visualizer:
                 )
             else:
                 ax.set_ylim(-140, 140)
-                label = f"CH{i}" if i < NUM_MELODIC else "NOISE"
+                label = f"CH{i}" if i < self.num_melodic else "NOISE"
                 ax.set_ylabel(label, color=ch_colors[i], fontsize=10)
                 (line,) = ax.plot(
                     x,
@@ -334,7 +344,7 @@ class Visualizer:
         def animate(_frame):
             with self._lock:
                 # Melodic channels
-                for i in range(NUM_MELODIC):
+                for i in range(self.num_melodic):
                     lines[i].set_ydata(self._ch_buffers[i])
                     osc = seq.oscillators[i]
                     env = seq.envelopes[i]
@@ -359,7 +369,7 @@ class Visualizer:
                             adsr_rects[i][j].set_facecolor(ADSR_INACTIVE)
 
                 # Noise channel
-                ni = NUM_MELODIC
+                ni = self.num_melodic
                 lines[ni].set_ydata(self._ch_buffers[ni])
                 noise_env = seq.envelopes[ni]
                 info_texts[ni].set_text("LFSR Noise")

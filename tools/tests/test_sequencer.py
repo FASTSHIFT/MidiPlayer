@@ -185,14 +185,14 @@ class TestPercussionPlayback:
             return  # skip if resource not available
 
         from player.sequencer import parse_midi
-        from player.instruments import NOISE_CH
 
-        tracks = parse_midi(midi_path, max_tracks=0)
+        tracks, num_channels, num_melodic = parse_midi(midi_path, max_tracks=0)
 
-        # Last track should be percussion (all events on NOISE_CH)
+        # Last track should be percussion (all events on noise channel)
         perc_track = tracks[-1]
+        noise_ch = num_melodic  # noise is right after melodic channels
         assert len(perc_track) > 0
-        assert all(ev.channel == NOISE_CH for ev in perc_track)
+        assert all(ev.channel == noise_ch for ev in perc_track)
         assert all(ev.phase_inc == 0 for ev in perc_track)
 
     def test_parse_midi_no_percussion(self):
@@ -210,14 +210,14 @@ class TestPercussionPlayback:
             return
 
         from player.sequencer import parse_midi
-        from player.instruments import NOISE_CH
 
-        tracks = parse_midi(midi_path, max_tracks=0)
+        tracks, num_channels, num_melodic = parse_midi(midi_path, max_tracks=0)
 
         # No track should have noise channel events
+        noise_ch = num_melodic
         for trk in tracks:
             for ev in trk:
-                assert ev.channel != NOISE_CH
+                assert ev.channel != noise_ch
 
 
 class TestPauseResume:
