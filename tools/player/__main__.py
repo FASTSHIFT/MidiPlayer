@@ -37,7 +37,10 @@ def play_audio(seq, mute=False, visualizer=None):
     else:
         stream = None
 
-    start_time = time.time()
+    wall_start = time.time()
+    speed_offset_ms = 0  # accumulated offset from speed changes
+    last_wall = wall_start
+    last_speed = seq.speed
     last_print = 0
 
     try:
@@ -45,13 +48,34 @@ def play_audio(seq, mute=False, visualizer=None):
             if visualizer and not visualizer.running:
                 break
 
-            elapsed_s = time.time() - start_time
-            current_ms = int(elapsed_s * 1000)
+            now = time.time()
+
+            if seq.paused:
+                # While paused, keep adjusting wall_start so time doesn't jump
+                wall_start += now - last_wall
+                last_wall = now
+                if stream:
+                    # Write silence
+                    silence = np.zeros(CHUNK_SIZE, dtype=np.float32)
+                    stream.write(silence.tobytes())
+                else:
+                    time.sleep(CHUNK_SIZE / SAMPLE_RATE)
+                continue
+
+            # Track speed changes — adjust offset so elapsed stays continuous
+            if seq.speed != last_speed:
+                elapsed_wall = now - wall_start
+                old_ms = int(elapsed_wall * last_speed * 1000) + speed_offset_ms
+                speed_offset_ms = old_ms - int(elapsed_wall * seq.speed * 1000)
+                last_speed = seq.speed
+
+            last_wall = now
+            elapsed_wall = now - wall_start
+            current_ms = int(elapsed_wall * seq.speed * 1000) + speed_offset_ms
 
             # Generate per-channel samples for visualizer
             if visualizer:
                 seq._process_events(current_ms)
-                # Extra envelope ticks
                 ticks = CHUNK_SIZE // 8
                 for _ in range(max(1, ticks) - 1):
                     for ch in range(NUM_CHANNELS):
@@ -77,8 +101,7 @@ def play_audio(seq, mute=False, visualizer=None):
             else:
                 time.sleep(CHUNK_SIZE / SAMPLE_RATE)
 
-            # Print progress
-            now = time.time()
+            # Print progress (non-vis mode only)
             if now - last_print >= 1.0 and not visualizer:
                 last_print = now
                 pct = seq.progress_pct
@@ -86,8 +109,9 @@ def play_audio(seq, mute=False, visualizer=None):
                 total = seq.total_ms
                 e_min, e_sec = elapsed // 60000, (elapsed % 60000) // 1000
                 t_min, t_sec = total // 60000, (total % 60000) // 1000
+                spd = f" {seq.speed:.1f}×" if seq.speed != 1.0 else ""
                 print(
-                    f"\r[{pct:3d}%] {e_min}:{e_sec:02d} / {t_min}:{t_sec:02d}",
+                    f"\r[{pct:3d}%] {e_min}:{e_sec:02d} / " f"{t_min}:{t_sec:02d}{spd}",
                     end="",
                     flush=True,
                 )
@@ -136,7 +160,11 @@ def main():
     )
     parser.add_argument("input", help="MIDI file to play")
     parser.add_argument(
-        "-t", "--tracks", type=int, default=0, help="Max tracks (0 = all, default: all)"
+        "-t",
+        "--tracks",
+        type=int,
+        default=0,
+        help="Max tracks (0 = all, default: all)",
     )
     parser.add_argument("-o", "--output", help="Export to WAV file")
     parser.add_argument("--mute", action="store_true", help="Mute audio output")
@@ -157,13 +185,11 @@ def main():
 
         vis = Visualizer(seq)
 
-        # Run audio in background thread
         audio_thread = threading.Thread(
             target=play_audio, args=(seq, args.mute, vis), daemon=True
         )
         audio_thread.start()
 
-        # Visualizer runs on main thread (matplotlib requirement)
         vis.run()
     else:
         play_audio(seq, mute=args.mute)

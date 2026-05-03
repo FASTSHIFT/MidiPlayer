@@ -217,3 +217,145 @@ class TestPercussionPlayback:
         for trk in tracks:
             for ev in trk:
                 assert ev.channel != NOISE_CH
+
+
+class TestPauseResume:
+    def test_pause_sets_flag(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        assert not seq.paused
+        seq.pause()
+        assert seq.paused
+        assert seq.playing  # still playing, just paused
+
+    def test_resume_clears_flag(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.pause()
+        seq.resume()
+        assert not seq.paused
+
+    def test_toggle_pause(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.toggle_pause()
+        assert seq.paused
+        seq.toggle_pause()
+        assert not seq.paused
+
+    def test_pause_when_not_playing_noop(self):
+        seq = Sequencer()
+        seq.pause()
+        assert not seq.paused
+
+    def test_resume_when_not_paused_noop(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.resume()  # not paused, should be noop
+        assert not seq.paused
+
+
+class TestSeek:
+    def test_seek_to_beginning(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        # Play a bit
+        for ms in range(0, 150, 16):
+            seq.generate_chunk(256, ms)
+        assert seq.elapsed_ms > 0
+
+        seq.seek(0)
+        assert seq.elapsed_ms == 0
+        assert seq.playing
+
+    def test_seek_to_middle(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.seek(150)
+        assert seq.elapsed_ms == 150
+
+        # After seek, generating should pick up from 150ms
+        # The second note starts at 200ms, so oscillator should be silent at 150
+        seq.generate_chunk(256, 1000)  # wall-clock doesn't matter, elapsed anchored
+        # elapsed should be around 150 (anchored by seek)
+
+    def test_seek_past_end_clamps(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.seek(99999)
+        assert seq.elapsed_ms == seq.total_ms
+
+    def test_seek_negative_clamps(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.seek(-100)
+        assert seq.elapsed_ms == 0
+
+    def test_seek_resets_channels(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        # Play first note
+        for ms in range(0, 10):
+            seq.generate_chunk(256, ms)
+        assert seq.oscillators[0].vol > 0
+
+        # Seek to after all notes
+        seq.seek(250)
+        # Channels should be silenced
+        assert seq.oscillators[0].phase_inc == 0
+        assert seq.oscillators[0].vol == 0
+
+    def test_seek_then_play_continues(self):
+        seq = Sequencer()
+        seq.load([make_events()])
+        seq.seek(0)
+
+        # Should be able to play through normally after seek
+        for ms in range(0, 600, 16):
+            seq.generate_chunk(256, ms)
+        assert not seq.playing
+
+    def test_seek_empty_tracks_noop(self):
+        seq = Sequencer()
+        seq.seek(100)  # no tracks loaded, should not crash
+
+    def test_seek_binary_search_accuracy(self):
+        """Seek should position track index correctly via binary search."""
+        events = [
+            NoteEvent(0, 50, 1072, 80, 0, 127, AdsrPreset.ORGAN, Waveform.SQUARE),
+            NoteEvent(100, 50, 1072, 80, 0, 127, AdsrPreset.ORGAN, Waveform.SQUARE),
+            NoteEvent(200, 50, 1802, 60, 0, 127, AdsrPreset.ORGAN, Waveform.SQUARE),
+            NoteEvent(300, 50, 1802, 60, 0, 127, AdsrPreset.ORGAN, Waveform.SQUARE),
+        ]
+        seq = Sequencer()
+        seq.load([events])
+
+        # Seek to 150ms — events at 0ms and 100ms are < 150, index = 2
+        seq.seek(150)
+        assert seq.track_indices[0] == 2
+
+        # Seek to 100ms — only event at 0ms is < 100, index = 1
+        # Event at 100ms will be replayed by _process_events
+        seq.seek(100)
+        assert seq.track_indices[0] == 1
+
+        # Seek to 0ms — no events < 0, index = 0 (replay from start)
+        seq.seek(0)
+        assert seq.track_indices[0] == 0
+
+
+class TestSpeed:
+    def test_default_speed(self):
+        seq = Sequencer()
+        assert seq.speed == 1.0
+
+    def test_set_speed(self):
+        seq = Sequencer()
+        seq.speed = 2.0
+        assert seq.speed == 2.0
+
+    def test_load_resets_speed(self):
+        seq = Sequencer()
+        seq.speed = 2.0
+        seq.load([make_events()])
+        assert seq.speed == 1.0

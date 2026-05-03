@@ -176,6 +176,8 @@ class Sequencer:
         self.track_indices = []
         self.channel_off_times = {}  # channel -> off_time_ms
         self.playing = False
+        self.paused = False
+        self.speed = 1.0
         self.start_ms = 0
         self.elapsed_ms = 0
         self.total_ms = 0
@@ -186,6 +188,8 @@ class Sequencer:
         self.track_indices = [0] * len(tracks)
         self.channel_off_times = {}
         self.playing = True
+        self.paused = False
+        self.speed = 1.0
         self.start_ms = 0
         self.elapsed_ms = 0
 
@@ -200,6 +204,10 @@ class Sequencer:
         self.total_ms = max_end
 
         # Reset all channels
+        self._silence_all()
+
+    def _silence_all(self):
+        """Reset all oscillators and envelopes to idle."""
         for osc in self.oscillators:
             osc.silence()
         self.noise.silence()
@@ -212,10 +220,61 @@ class Sequencer:
         self.load(tracks)
         return len(tracks)
 
+    def pause(self):
+        """Pause playback."""
+        if self.playing and not self.paused:
+            self.paused = True
+
+    def resume(self):
+        """Resume playback after pause."""
+        if self.playing and self.paused:
+            self.paused = False
+
+    def toggle_pause(self):
+        """Toggle pause/resume."""
+        if self.paused:
+            self.resume()
+        else:
+            self.pause()
+
+    def seek(self, target_ms):
+        """Jump to a specific position in the score.
+
+        Uses binary search to reposition each track's event index,
+        then resets all channel state.
+        """
+        if not self.tracks:
+            return
+
+        target_ms = max(0, min(target_ms, self.total_ms))
+
+        # Binary search each track to find the right event index
+        # Uses strict < so events at exactly target_ms will be replayed
+        for t, trk in enumerate(self.tracks):
+            lo, hi = 0, len(trk)
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if trk[mid].start_ms < target_ms:
+                    lo = mid + 1
+                else:
+                    hi = mid
+            self.track_indices[t] = lo
+
+        # Clear all channel state
+        self.channel_off_times.clear()
+        self._silence_all()
+
+        # Align time
+        self.elapsed_ms = target_ms
+        # Reset start_ms so next _process_events call recalculates
+        self.start_ms = 0
+        self.playing = True
+
     def _process_events(self, current_ms):
         """Process note on/off events up to current_ms."""
         if self.start_ms == 0:
-            self.start_ms = current_ms
+            # First call or after seek — anchor wall-clock to elapsed_ms
+            self.start_ms = current_ms - self.elapsed_ms
 
         elapsed = current_ms - self.start_ms
         self.elapsed_ms = elapsed
