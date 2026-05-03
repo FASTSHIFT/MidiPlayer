@@ -134,7 +134,17 @@ class Visualizer:
         adsr_rects = []  # list of 4 Rectangles per channel
         x = np.arange(self.display_samples)
 
-        ch_colors = ["#00d2ff", "#ff6b6b", "#ffd93d", "#b388ff", "#e94560"]
+        ch_colors = [
+            "#00d2ff",  # CH0
+            "#ff6b6b",  # CH1
+            "#ffd93d",  # CH2
+            "#6bcb77",  # CH3
+            "#ff9a3c",  # CH4
+            "#a78bfa",  # CH5
+            "#f472b6",  # CH6
+            "#b388ff",  # NOISE
+            "#e94560",  # MIX
+        ]
 
         for i, ax in enumerate(axes):
             ax.set_facecolor("#16213e")
