@@ -7,10 +7,10 @@ from player.sequencer import Sequencer
 
 class TestNoteNameConversion:
     def test_a4(self):
-        assert phase_inc_to_note_name(1802) == "A4"
+        assert phase_inc_to_note_name(1802) == " A4"
 
     def test_c4(self):
-        assert phase_inc_to_note_name(1072) == "C4"
+        assert phase_inc_to_note_name(1072) == " C4"
 
     def test_zero(self):
         assert phase_inc_to_note_name(0) == "---"

@@ -18,11 +18,27 @@ from .mixer import Mixer, NUM_CHANNELS
 from .oscillator import SAMPLE_RATE
 
 CHUNK_SIZE = 256  # 16ms at 16kHz
+AUDIO_BUFFER_CHUNKS = 4  # pyaudio buffer = 4 chunks = 64ms headroom
 NUM_MELODIC = NUM_CHANNELS - 1
 
 
 def play_audio(seq, mute=False, visualizer=None):
     """Play audio through pyaudio, optionally feeding visualizer."""
+    stream = None
+    pa = None
+
+    wall_start = time.time()
+    speed_offset_ms = 0  # accumulated offset from speed changes
+    last_wall = wall_start
+    last_speed = seq.speed
+    last_print = 0
+
+    # Wait for visualizer to be ready before starting the clock
+    if visualizer:
+        while not visualizer.running:
+            time.sleep(0.01)
+
+    # Init pyaudio AFTER visualizer is ready (avoids blocking vis startup)
     if not mute:
         import pyaudio
 
@@ -32,16 +48,24 @@ def play_audio(seq, mute=False, visualizer=None):
             channels=1,
             rate=SAMPLE_RATE,
             output=True,
-            frames_per_buffer=CHUNK_SIZE,
+            frames_per_buffer=CHUNK_SIZE * AUDIO_BUFFER_CHUNKS,
         )
-    else:
-        stream = None
+
+    # Reset wall clock after ALL init is done (pyaudio + visualizer)
+    chunk_ms = CHUNK_SIZE * 1000 // SAMPLE_RATE  # 16ms per chunk
+    seq_time_ms = 0  # sequencer time, advanced by chunk_ms each iteration
+    last_print = 0
+
+    # Pre-buffer: generate a few chunks to fill pyaudio's buffer before playback
+    if stream:
+        for _ in range(AUDIO_BUFFER_CHUNKS):
+            seq_time_ms += chunk_ms
+            samples = seq.generate_chunk(CHUNK_SIZE, seq_time_ms)
+            audio = Mixer.to_float32(samples)
+            stream.write(audio.tobytes())
 
     wall_start = time.time()
-    speed_offset_ms = 0  # accumulated offset from speed changes
     last_wall = wall_start
-    last_speed = seq.speed
-    last_print = 0
 
     try:
         while seq.playing:
@@ -55,23 +79,21 @@ def play_audio(seq, mute=False, visualizer=None):
                 wall_start += now - last_wall
                 last_wall = now
                 if stream:
-                    # Write silence
                     silence = np.zeros(CHUNK_SIZE, dtype=np.float32)
                     stream.write(silence.tobytes())
                 else:
                     time.sleep(CHUNK_SIZE / SAMPLE_RATE)
                 continue
 
-            # Track speed changes — adjust offset so elapsed stays continuous
-            if seq.speed != last_speed:
-                elapsed_wall = now - wall_start
-                old_ms = int(elapsed_wall * last_speed * 1000) + speed_offset_ms
-                speed_offset_ms = old_ms - int(elapsed_wall * seq.speed * 1000)
-                last_speed = seq.speed
-
             last_wall = now
-            elapsed_wall = now - wall_start
-            current_ms = int(elapsed_wall * seq.speed * 1000) + speed_offset_ms
+
+            # Sync with sequencer after seek
+            if abs(seq.elapsed_ms - seq_time_ms) > chunk_ms * 2:
+                seq_time_ms = seq.elapsed_ms
+
+            # Advance sequencer time by one chunk worth of ms, scaled by speed
+            seq_time_ms += int(chunk_ms * seq.speed)
+            current_ms = seq_time_ms
 
             # Generate per-channel samples for visualizer
             if visualizer:

@@ -55,7 +55,7 @@ def phase_inc_to_note_name(phase_inc):
         return "---"
     octave = midi // 12 - 1
     name = NOTE_NAMES[midi % 12]
-    return f"{name}{octave}"
+    return f"{name}{octave}".rjust(3)
 
 
 class Visualizer:
@@ -105,7 +105,7 @@ class Visualizer:
         from matplotlib.widgets import Slider, Button
         from matplotlib.patches import Rectangle
 
-        self.running = True
+        self.running = False
         seq = self.seq
 
         # --- Layout ---
@@ -387,5 +387,6 @@ class Visualizer:
             cache_frame_data=False,
         )
 
+        self.running = True
         plt.show()
         self.running = False
