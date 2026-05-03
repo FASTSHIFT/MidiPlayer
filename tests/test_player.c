@@ -7,7 +7,6 @@
 #include "test_framework.h"
 #include "mock_port.h"
 #include "mp_player.h"
-#include "mp_port.h"
 
 /* ORGAN preset, square wave */
 #define TEST_ADSR 2
@@ -27,13 +26,11 @@ static const mp_score_t player_test_score = {
 };
 
 static void test_player_init(void) {
-    mock_port_install();
     mp_init();
     TEST_ASSERT_FALSE(mp_is_playing());
 }
 
 static void test_player_play_stop(void) {
-    mock_port_install();
     mp_init();
     mp_play(&player_test_score);
     TEST_ASSERT_TRUE(mp_is_playing());
@@ -42,14 +39,12 @@ static void test_player_play_stop(void) {
 }
 
 static void test_player_audio_tick_returns_valid(void) {
-    mock_port_install();
     mp_init();
     uint16_t sample = mp_audio_tick();
     TEST_ASSERT_EQUAL(MP_OSC_DC_OFFSET, sample);
 }
 
 static void test_player_full_playback(void) {
-    mock_port_install();
     mp_init();
     mock_port_reset();
 
@@ -59,8 +54,7 @@ static void test_player_full_playback(void) {
     for (uint32_t ms = 0; ms < 300; ms++) {
         mp_update(ms);
         for (int s = 0; s < 16; s++) {
-            uint16_t sample = mp_audio_tick();
-            mp_port_audio_write(sample);
+            mock_port_record_sample(mp_audio_tick());
         }
     }
 
@@ -69,9 +63,7 @@ static void test_player_full_playback(void) {
 }
 
 static void test_player_audio_has_variation(void) {
-    mock_port_install();
     mp_init();
-    mock_port_reset();
 
     mp_play(&player_test_score);
 
@@ -93,7 +85,6 @@ static void test_player_audio_has_variation(void) {
 /* --- Progress query tests --- */
 
 static void test_player_progress_before_play(void) {
-    mock_port_install();
     mp_init();
     TEST_ASSERT_EQUAL(0, mp_get_elapsed_ms());
     TEST_ASSERT_EQUAL(0, mp_get_total_ms());
@@ -101,7 +92,6 @@ static void test_player_progress_before_play(void) {
 }
 
 static void test_player_total_duration(void) {
-    mock_port_install();
     mp_init();
     mp_play(&player_test_score);
 
@@ -110,7 +100,6 @@ static void test_player_total_duration(void) {
 }
 
 static void test_player_progress_during_playback(void) {
-    mock_port_install();
     mp_init();
     mp_play(&player_test_score);
 
@@ -124,7 +113,6 @@ static void test_player_progress_during_playback(void) {
 }
 
 static void test_player_progress_at_end(void) {
-    mock_port_install();
     mp_init();
     mp_play(&player_test_score);
 

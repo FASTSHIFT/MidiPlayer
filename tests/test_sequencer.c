@@ -5,7 +5,6 @@
  * Unit tests for mp_sequencer (packed event format)
  */
 #include "test_framework.h"
-#include "mock_port.h"
 #include "mp_envelope.h"
 #include "mp_osc.h"
 #include "mp_sequencer.h"

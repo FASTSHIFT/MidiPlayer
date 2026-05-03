@@ -2,7 +2,7 @@
  * MIT License
  * Copyright (c) 2026 VIFEX
  *
- * Mock implementation of mp_port.h for host-based testing
+ * Test helpers for MidiPlayer host-based testing
  */
 #ifndef MOCK_PORT_H
 #define MOCK_PORT_H
@@ -18,15 +18,10 @@ extern "C" {
 /* Access mock state for test assertions */
 uint16_t* mock_port_get_audio_buffer(void);
 uint32_t mock_port_get_audio_count(void);
-uint32_t mock_port_get_tick(void);
 
 /* Test helpers */
 void mock_port_reset(void);
-void mock_port_set_tick(uint32_t ms);
-void mock_port_advance_tick(uint32_t ms);
-
-/* Register mock callbacks with mp_port_init() */
-void mock_port_install(void);
+void mock_port_record_sample(uint16_t sample);
 
 #ifdef __cplusplus
 }

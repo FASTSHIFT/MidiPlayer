@@ -5,6 +5,7 @@
  * MidiPlayer - Public API
  *
  * Unified interface combining oscillator and sequencer.
+ * Platform code calls mp_audio_tick() and mp_update() directly.
  */
 #ifndef MP_PLAYER_H
 #define MP_PLAYER_H
@@ -18,7 +19,6 @@ extern "C" {
 
 /**
  * @brief  Initialize the MidiPlayer library
- *         Must be called before any other mp_* functions.
  */
 void mp_init(void);
 
@@ -40,18 +40,16 @@ void mp_stop(void);
 uint8_t mp_is_playing(void);
 
 /**
- * @brief  Audio sample tick - call from timer ISR at 16kHz
- * @retval 10-bit mixed audio sample (0~1023)
- *
- * Typical usage in timer ISR:
- *   uint16_t sample = mp_audio_tick();
- *   mp_port_audio_write(sample);
+ * @brief  Generate one mixed audio sample
+ * @retval 10-bit sample (0~1023), write this to your PWM/DAC
+ * @note   Call at 16kHz from timer ISR
  */
 uint16_t mp_audio_tick(void);
 
 /**
- * @brief  Sequencer tick - call periodically with current time
+ * @brief  Advance the sequencer
  * @param  current_ms: current time in milliseconds
+ * @note   Call at 2kHz (e.g. every 8th call of the 16kHz ISR)
  */
 void mp_update(uint32_t current_ms);
 

@@ -21,7 +21,6 @@ endif()
 
 # Source under test
 set(SUT_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_port.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_osc.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_envelope.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../source/mp_note_table.c

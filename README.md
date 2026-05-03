@@ -11,7 +11,7 @@
 - **ADSR 包络**：7 种预设（钢琴、管风琴、弦乐、贝斯、Lead、Pad 等）
 - **MIDI 乐器映射**：根据 General MIDI Program Number 自动选择波形 + 占空比 + ADSR
 - **紧凑数据格式**：每个音符事件仅 8 字节（位域压缩），比朴素结构体节省 50%
-- **回调式平台抽象**：通过 `mp_port_init()` 注册回调函数，无链接耦合，支持动态切换
+- **零平台耦合**：库不依赖任何平台头文件，ISR 直接调用 `mp_audio_tick()` + `mp_update()`
 - **PC MIDI 播放器**：Python 实现，与 MCU 完全相同的合成算法，支持实时播放、WAV 导出、波形可视化
 - **单元测试**：C 68 个 + Python 65 个测试用例，Host 编译 + ASan + lcov 覆盖率
 - **GitHub CI**：C 单元测试、Python 测试 + lint、STM32 交叉编译、代码格式检查、MIDI 转换验证
@@ -34,9 +34,8 @@ graph TD
         API --> OSC
     end
 
-    subgraph "平台层 (回调注册)"
-        OSC --> |"16kHz 采样"| PORT["mp_port_audio_write()"]
-        PORT --> PWM["PWM / DAC / 音频缓冲"]
+    subgraph "平台层 (用户 ISR)"
+        OSC --> |"16kHz 采样"| PWM["TIMx->CCRy = mp_audio_tick()"]
     end
 ```
 
@@ -271,47 +270,26 @@ target_include_directories(my_app PRIVATE ${MIDIPLAYER_INCLUDES})
 target_compile_definitions(my_app PRIVATE ${MIDIPLAYER_DEFINITIONS})
 ```
 
-### 3. 注册平台回调
+### 3. 在平台代码中调用
 
 ```c
-#include "mp_port.h"
 #include "mp_player.h"
 #include "midi_data.h"  // 由 midi_to_header.py 生成
 
-// 实现两个回调函数
-static void my_audio_write(uint16_t value) {
-    TIMx->CCRy = value;  // 或 DAC 输出、音频缓冲区写入等
-}
-
-static uint32_t my_get_tick(void) {
-    return HAL_GetTick();  // 或任何毫秒计数源
-}
-
 void app_init(void) {
-    // 注册回调
-    mp_port_t port = {
-        .audio_write = my_audio_write,
-        .get_tick_ms = my_get_tick,
-    };
-    mp_port_init(&port);
-
-    // 初始化并播放
     mp_init();
     mp_play(&midi_score);
 }
 
 // 在 16kHz 定时器中断中调用：
 void TIM_IRQHandler(void) {
-    mp_port_audio_write(mp_audio_tick());
+    TIMx->CCRy = mp_audio_tick();   // 写 PWM / DAC
     static uint8_t pre = 8;
-    if (--pre == 0) { pre = 8; mp_update(mp_port_get_tick_ms()); }
+    if (--pre == 0) { pre = 8; mp_update(HAL_GetTick()); }
 }
 ```
 
-回调方式的好处：
-- 库编译时不依赖任何平台头文件
-- 运行时可以动态切换输出目标（比如从 PWM 切到 DAC）
-- 测试时直接注册 mock 回调，无需条件编译
+库不包含任何平台头文件，ISR 里直接调用两个函数即可。
 
 ## 目录结构
 
@@ -322,8 +300,7 @@ MidiPlayer/
 │   ├── mp_envelope.c/h     #   ADSR 包络发生器（7 种预设）
 │   ├── mp_sequencer.c/h    #   事件驱动音序器（8 字节压缩格式）
 │   ├── mp_note_table.c/h   #   MIDI 音符 → 相位增量查找表
-│   ├── mp_player.c/h       #   公共 API
-│   └── mp_port.c/h         #   平台回调接口
+│   └── mp_player.c/h       #   公共 API
 ├── tests/                  # C 单元测试（Host 编译，68 个用例）
 ├── examples/stm32f103/     # STM32F103 独立运行示例
 ├── tools/
