@@ -92,6 +92,14 @@ fi
 
 if $INSTALL_PYTHON; then
     echo -e "\n${GREEN}📦 Installing Python dependencies...${NC}"
+
+    # pyaudio requires portaudio19-dev at build time; install it if missing
+    if ! dpkg -s portaudio19-dev &>/dev/null; then
+        echo -e "   ${YELLOW}portaudio19-dev not found, installing (required by pyaudio)...${NC}"
+        sudo apt-get update -qq
+        sudo apt-get install -y portaudio19-dev
+    fi
+
     if $DEV_MODE; then
         pip install -r "$SCRIPT_DIR/requirements-dev.txt"
         echo -e "   ${GREEN}Python dev dependencies installed ✓${NC}"
